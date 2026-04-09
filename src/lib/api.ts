@@ -1,6 +1,41 @@
 export function getApiUrl(): string {
-  const base =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ||
-    'http://localhost:4000';
-  return base;
+  return (process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000");
+}
+
+export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+  const url = `${getApiUrl()}${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      localStorage.removeItem("admin_token");
+      localStorage.removeItem("admin_user");
+      window.location.href = "/login";
+    }
+    const err = await res.json().catch(() => ({ message: "Request failed" }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function apiUpload(path: string, formData: FormData): Promise<any> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+  const url = `${getApiUrl()}${path}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: "Upload failed" }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
 }
