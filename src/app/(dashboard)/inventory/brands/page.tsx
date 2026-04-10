@@ -11,8 +11,8 @@ import {
   Plus,
   ImageIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 import { apiFetch, apiUpload } from "@/lib/api";
-import { getSelectedBranch } from "@/lib/auth";
 import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
 import { FilterBar } from "@/components/common/FilterBar";
@@ -36,6 +36,36 @@ interface Brand {
   branches?: { id: number; name: string }[];
 }
 
+function normalizeBrand(raw: {
+  id: number;
+  name: string;
+  description?: string | null;
+  image?: string | null;
+  isActive?: boolean;
+  status?: string;
+  branches?: { branch?: { id: number; name: string }; id?: number; name?: string }[];
+}): Brand {
+  const branches = (raw.branches ?? []).map((bb) =>
+    bb.branch
+      ? { id: bb.branch.id, name: bb.branch.name }
+      : { id: bb.id as number, name: bb.name as string }
+  );
+  const status =
+    typeof raw.status === "string"
+      ? raw.status
+      : raw.isActive
+        ? "active"
+        : "inactive";
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.description ?? undefined,
+    image: raw.image ?? undefined,
+    status,
+    branches,
+  };
+}
+
 export default function BrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -55,8 +85,18 @@ export default function BrandsPage() {
   const fetchBrands = async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<{ brands: Brand[] }>("/brands");
-      setBrands(data.brands || []);
+      const res = await apiFetch<
+        | { data: Parameters<typeof normalizeBrand>[0][]; total?: number }
+        | { brands: Brand[] }
+      >("/brands?limit=500");
+      const list = Array.isArray(res)
+        ? res
+        : "data" in res && Array.isArray(res.data)
+          ? res.data
+          : "brands" in res
+            ? res.brands
+            : [];
+      setBrands(list.map((b) => normalizeBrand(b)));
     } catch {
       setBrands([]);
     } finally {
@@ -66,8 +106,8 @@ export default function BrandsPage() {
 
   const fetchBranches = async () => {
     try {
-      const data = await apiFetch<{ branches: Branch[] }>("/branches");
-      setBranches(data.branches || []);
+      const data = await apiFetch<Branch[] | { branches: Branch[] }>("/branches");
+      setBranches(Array.isArray(data) ? data : data.branches ?? []);
     } catch {
       setBranches([]);
     }
@@ -137,14 +177,14 @@ export default function BrandsPage() {
       if (formImage) {
         const fd = new FormData();
         fd.append("file", formImage);
-        const res = await apiUpload("/upload", fd);
+        const res = await apiUpload("/upload/single", fd);
         imageUrl = res.url || res.path;
       }
 
       const payload = {
         name: formName,
         description: formDesc,
-        status: formStatus ? "active" : "inactive",
+        isActive: formStatus,
         branchIds: formBranches,
         image: imageUrl,
       };
@@ -162,8 +202,9 @@ export default function BrandsPage() {
       }
       setModalOpen(false);
       fetchBrands();
+      toast.success(editing ? "Brand updated" : "Brand created");
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Something went wrong");
     } finally {
       setSaving(false);
     }
@@ -174,8 +215,9 @@ export default function BrandsPage() {
     try {
       await apiFetch(`/brands/${id}`, { method: "DELETE" });
       fetchBrands();
+      toast.success("Brand deleted");
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Delete failed");
     }
   };
 

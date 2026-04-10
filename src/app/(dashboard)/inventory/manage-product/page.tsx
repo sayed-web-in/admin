@@ -59,6 +59,77 @@ interface DraftProduct {
   status: string;
 }
 
+function normalizeStoreRow(sp: {
+  id: number;
+  productId: number;
+  quantity: number;
+  sellingPrice: unknown;
+  discountType?: string | null;
+  discountValue?: unknown | null;
+  isActive?: boolean;
+  product: {
+    name: string;
+    type: string;
+    sku?: string | null;
+  };
+  productVariant?: {
+    sku: string;
+    attributes?: { attributeValue?: { value: string } | null }[];
+  } | null;
+}): StoreProduct {
+  const pv = sp.productVariant;
+  const variantLabel =
+    pv?.attributes?.length
+      ? pv.attributes
+          .map((a) => a.attributeValue?.value)
+          .filter(Boolean)
+          .join(" / ") || undefined
+      : undefined;
+  const dt = sp.discountType;
+  const discountTypeUi =
+    dt === "PERCENTAGE"
+      ? "percentage"
+      : dt === "FIXED"
+        ? "fixed"
+        : undefined;
+  return {
+    id: sp.id,
+    productId: sp.productId,
+    productName: sp.product.name,
+    type: sp.product.type,
+    variantLabel,
+    sku: pv?.sku ?? sp.product.sku ?? "—",
+    quantity: sp.quantity,
+    sellingPrice: Number(sp.sellingPrice),
+    discountType: discountTypeUi,
+    discountValue:
+      sp.discountValue != null ? Number(sp.discountValue) : undefined,
+    status: sp.isActive ? "active" : "inactive",
+  };
+}
+
+function normalizeDraftRow(p: {
+  id: number;
+  name: string;
+  type: string;
+  sku?: string | null;
+  createdAt: string;
+  status: string;
+  category?: { name: string } | null;
+  brand?: { name: string } | null;
+}): DraftProduct {
+  return {
+    id: p.id,
+    name: p.name,
+    type: p.type,
+    sku: p.sku ?? undefined,
+    categoryName: p.category?.name,
+    brandName: p.brand?.name,
+    createdAt: p.createdAt,
+    status: p.status,
+  };
+}
+
 export default function ManageProductPage() {
   const [tab, setTab] = useState<"store" | "draft">("store");
   const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([]);
@@ -79,11 +150,27 @@ export default function ManageProductPage() {
     setLoading(true);
     try {
       const [storeRes, draftRes] = await Promise.all([
-        apiFetch<{ products: StoreProduct[] }>("/products/store"),
-        apiFetch<{ products: DraftProduct[] }>("/products/drafts"),
+        apiFetch<unknown>("/products/store?limit=500"),
+        apiFetch<unknown>("/products/draft?limit=500"),
       ]);
-      setStoreProducts(storeRes.products || []);
-      setDraftProducts(draftRes.products || []);
+      const storeList = Array.isArray(storeRes)
+        ? storeRes
+        : storeRes &&
+            typeof storeRes === "object" &&
+            "data" in storeRes &&
+            Array.isArray((storeRes as { data: unknown }).data)
+          ? (storeRes as { data: Parameters<typeof normalizeStoreRow>[0][] }).data
+          : [];
+      const draftList = Array.isArray(draftRes)
+        ? draftRes
+        : draftRes &&
+            typeof draftRes === "object" &&
+            "data" in draftRes &&
+            Array.isArray((draftRes as { data: unknown }).data)
+          ? (draftRes as { data: Parameters<typeof normalizeDraftRow>[0][] }).data
+          : [];
+      setStoreProducts(storeList.map(normalizeStoreRow));
+      setDraftProducts(draftList.map(normalizeDraftRow));
     } catch {
       setStoreProducts([]);
       setDraftProducts([]);
@@ -94,14 +181,28 @@ export default function ManageProductPage() {
 
   useEffect(() => {
     fetchData();
-    apiFetch<{ branches: Branch[] }>("/branches")
-      .then((d) => setBranches(d.branches || []))
+    apiFetch<Branch[] | { branches: Branch[] }>("/branches")
+      .then((d) => setBranches(Array.isArray(d) ? d : d.branches ?? []))
       .catch(() => {});
-    apiFetch<{ brands: Brand[] }>("/brands")
-      .then((d) => setBrands(d.brands || []))
+    apiFetch<unknown>("/brands?limit=500")
+      .then((res) => {
+        const list = Array.isArray(res)
+          ? res
+          : res && typeof res === "object" && "data" in res && Array.isArray((res as { data: Brand[] }).data)
+            ? (res as { data: Brand[] }).data
+            : [];
+        setBrands(list.map((b) => ({ id: b.id, name: b.name })));
+      })
       .catch(() => {});
-    apiFetch<{ categories: Category[] }>("/categories")
-      .then((d) => setCategories(d.categories || []))
+    apiFetch<unknown>("/categories?limit=500")
+      .then((res) => {
+        const list = Array.isArray(res)
+          ? res
+          : res && typeof res === "object" && "data" in res && Array.isArray((res as { data: Category[] }).data)
+            ? (res as { data: Category[] }).data
+            : [];
+        setCategories(list.map((c) => ({ id: c.id, name: c.name })));
+      })
       .catch(() => {});
   }, []);
 
@@ -140,7 +241,7 @@ export default function ManageProductPage() {
         : "Are you sure you want to delete this store product?";
     if (!confirm(msg)) return;
     try {
-      await apiFetch(`/products/store/${id}`, { method: "DELETE" });
+      await apiFetch(`/products/store-products/${id}`, { method: "DELETE" });
       fetchData();
     } catch (err: any) {
       alert(err.message);

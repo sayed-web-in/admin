@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { Palette, Pencil, Trash2, Plus, X } from "lucide-react";
+import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import { PageHeader } from "@/components/common/PageHeader";
 import { FilterBar } from "@/components/common/FilterBar";
@@ -24,6 +25,20 @@ interface Attribute {
   values: AttributeValue[];
 }
 
+function normalizeAttribute(raw: {
+  id: number;
+  name: string;
+  isActive?: boolean;
+  values?: { id: number; value: string }[];
+}): Attribute {
+  return {
+    id: raw.id,
+    name: raw.name,
+    status: raw.isActive ? "active" : "inactive",
+    values: (raw.values ?? []).map((v) => ({ id: v.id, value: v.value })),
+  };
+}
+
 export default function VariantsPage() {
   const [attributes, setAttributes] = useState<Attribute[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,8 +54,18 @@ export default function VariantsPage() {
   const fetchAttributes = async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<{ attributes: Attribute[] }>("/attributes");
-      setAttributes(data.attributes || []);
+      const res = await apiFetch<
+        | { data: Parameters<typeof normalizeAttribute>[0][]; total?: number }
+        | { attributes: Attribute[] }
+      >("/attributes?limit=500");
+      const list = Array.isArray(res)
+        ? res
+        : "data" in res && Array.isArray(res.data)
+          ? res.data
+          : "attributes" in res
+            ? res.attributes
+            : [];
+      setAttributes(list.map((a) => normalizeAttribute(a)));
     } catch {
       setAttributes([]);
     } finally {
@@ -90,18 +115,19 @@ export default function VariantsPage() {
 
   const handleSave = async () => {
     if (!formName.trim()) return;
-    const values = formValues.filter((v) => v.trim());
-    if (values.length === 0) return;
+    const trimmed = formValues.map((v) => v.trim()).filter(Boolean);
+    if (trimmed.length === 0) return;
     setSaving(true);
     try {
+      const valueObjects = trimmed.map((v) => ({ value: v }));
       const payload = {
         name: formName,
-        status: formStatus ? "active" : "inactive",
-        values,
+        isActive: formStatus,
+        values: valueObjects,
       };
       if (editing) {
         await apiFetch(`/attributes/${editing.id}`, {
-          method: "PUT",
+          method: "PATCH",
           body: JSON.stringify(payload),
         });
       } else {
@@ -112,8 +138,9 @@ export default function VariantsPage() {
       }
       setModalOpen(false);
       fetchAttributes();
+      toast.success(editing ? "Attribute updated" : "Attribute created");
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Something went wrong");
     } finally {
       setSaving(false);
     }
@@ -124,8 +151,9 @@ export default function VariantsPage() {
     try {
       await apiFetch(`/attributes/${id}`, { method: "DELETE" });
       fetchAttributes();
+      toast.success("Attribute deleted");
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Delete failed");
     }
   };
 
@@ -263,7 +291,14 @@ export default function VariantsPage() {
             <Button variant="outline" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving || !formName.trim()}>
+            <Button
+              onClick={handleSave}
+              disabled={
+                saving ||
+                !formName.trim() ||
+                formValues.every((v) => !v.trim())
+              }
+            >
               {saving ? "Saving..." : editing ? "Update" : "Create"}
             </Button>
           </div>

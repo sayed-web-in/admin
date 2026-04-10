@@ -10,7 +10,9 @@ import {
   Trash2,
   Plus,
   ImageIcon,
+  Eye,
 } from "lucide-react";
+import { toast } from "sonner";
 import { apiFetch, apiUpload } from "@/lib/api";
 import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
@@ -42,7 +44,63 @@ interface Category {
   status: string;
   displayOrder?: number;
   subcategories?: Subcategory[];
+  /** From API list when only _count is returned */
+  subcategoryCount?: number;
   branches?: { id: number; name: string }[];
+}
+
+function normalizeSubcategoryRow(raw: {
+  id: number;
+  name: string;
+  description?: string | null;
+  image?: string | null;
+  isActive?: boolean;
+}): Subcategory {
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.description ?? undefined,
+    image: raw.image ?? undefined,
+    status: raw.isActive ? "active" : "inactive",
+  };
+}
+
+function normalizeCategory(raw: {
+  id: number;
+  name: string;
+  description?: string | null;
+  image?: string | null;
+  displayOrder?: number | null;
+  isActive?: boolean;
+  status?: string;
+  subcategories?: Subcategory[];
+  _count?: { subcategories: number };
+  branches?: { branch?: { id: number; name: string }; id?: number; name?: string }[];
+}): Category {
+  const branches = (raw.branches ?? []).map((bb) =>
+    bb.branch
+      ? { id: bb.branch.id, name: bb.branch.name }
+      : { id: bb.id as number, name: bb.name as string }
+  );
+  const status =
+    typeof raw.status === "string"
+      ? raw.status
+      : raw.isActive
+        ? "active"
+        : "inactive";
+  const subCount =
+    raw._count?.subcategories ?? raw.subcategories?.length ?? 0;
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.description ?? undefined,
+    image: raw.image ?? undefined,
+    displayOrder: raw.displayOrder ?? undefined,
+    status,
+    branches,
+    subcategories: raw.subcategories,
+    subcategoryCount: subCount,
+  };
 }
 
 export default function CategoriesPage() {
@@ -69,13 +127,28 @@ export default function CategoriesPage() {
   const [subImage, setSubImage] = useState<File | null>(null);
   const [subImagePreview, setSubImagePreview] = useState("");
 
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [viewCategoryName, setViewCategoryName] = useState("");
+  const [viewSubs, setViewSubs] = useState<Subcategory[]>([]);
+  const [viewLoading, setViewLoading] = useState(false);
+
   const [saving, setSaving] = useState(false);
 
   const fetchCategories = async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<{ categories: Category[] }>("/categories");
-      setCategories(data.categories || []);
+      const res = await apiFetch<
+        | { data: Parameters<typeof normalizeCategory>[0][]; total?: number }
+        | { categories: Category[] }
+      >("/categories?limit=500");
+      const list = Array.isArray(res)
+        ? res
+        : "data" in res && Array.isArray(res.data)
+          ? res.data
+          : "categories" in res
+            ? res.categories
+            : [];
+      setCategories(list.map((c) => normalizeCategory(c)));
     } catch {
       setCategories([]);
     } finally {
@@ -85,8 +158,8 @@ export default function CategoriesPage() {
 
   const fetchBranches = async () => {
     try {
-      const data = await apiFetch<{ branches: Branch[] }>("/branches");
-      setBranches(data.branches || []);
+      const data = await apiFetch<Branch[] | { branches: Branch[] }>("/branches");
+      setBranches(Array.isArray(data) ? data : data.branches ?? []);
     } catch {
       setBranches([]);
     }
@@ -107,7 +180,9 @@ export default function CategoriesPage() {
 
   const stats = useMemo(() => {
     const totalSubs = categories.reduce(
-      (sum, c) => sum + (c.subcategories?.length || 0),
+      (sum, c) =>
+        sum +
+        (c.subcategoryCount ?? c.subcategories?.length ?? 0),
       0
     );
     const active = categories.filter((c) => c.status === "active").length;
@@ -150,6 +225,30 @@ export default function CategoriesPage() {
     setSubModalOpen(true);
   };
 
+  const openViewSubcategories = async (cat: Category) => {
+    setViewCategoryName(cat.name);
+    setViewSubs([]);
+    setViewModalOpen(true);
+    setViewLoading(true);
+    try {
+      const d = await apiFetch<{
+        subcategories?: {
+          id: number;
+          name: string;
+          description?: string | null;
+          image?: string | null;
+          isActive?: boolean;
+        }[];
+      }>(`/categories/${cat.id}`);
+      setViewSubs((d.subcategories ?? []).map(normalizeSubcategoryRow));
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load subcategories");
+      setViewModalOpen(false);
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
   const handleSaveCat = async () => {
     if (!catName.trim()) return;
     setSaving(true);
@@ -158,13 +257,13 @@ export default function CategoriesPage() {
       if (catImage) {
         const fd = new FormData();
         fd.append("file", catImage);
-        const res = await apiUpload("/upload", fd);
+        const res = await apiUpload("/upload/single", fd);
         imageUrl = res.url || res.path;
       }
       const payload = {
         name: catName,
         description: catDesc,
-        status: catStatus ? "active" : "inactive",
+        isActive: catStatus,
         displayOrder: catOrder,
         branchIds: catBranches,
         image: imageUrl,
@@ -182,8 +281,9 @@ export default function CategoriesPage() {
       }
       setCatModalOpen(false);
       fetchCategories();
+      toast.success(editingCat ? "Category updated" : "Category created");
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Something went wrong");
     } finally {
       setSaving(false);
     }
@@ -197,7 +297,7 @@ export default function CategoriesPage() {
       if (subImage) {
         const fd = new FormData();
         fd.append("file", subImage);
-        const res = await apiUpload("/upload", fd);
+        const res = await apiUpload("/upload/single", fd);
         imageUrl = res.url || res.path;
       }
       await apiFetch(`/categories/${subParentId}/subcategories`, {
@@ -205,14 +305,15 @@ export default function CategoriesPage() {
         body: JSON.stringify({
           name: subName,
           description: subDesc,
-          status: subStatus ? "active" : "inactive",
+          isActive: subStatus,
           image: imageUrl,
         }),
       });
       setSubModalOpen(false);
       fetchCategories();
+      toast.success("Subcategory created");
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Something went wrong");
     } finally {
       setSaving(false);
     }
@@ -223,8 +324,9 @@ export default function CategoriesPage() {
     try {
       await apiFetch(`/categories/${id}`, { method: "DELETE" });
       fetchCategories();
+      toast.success("Category deleted");
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Delete failed");
     }
   };
 
@@ -258,7 +360,7 @@ export default function CategoriesPage() {
       label: "Subcategories",
       render: (item: Category) => (
         <span className="text-muted-foreground">
-          {item.subcategories?.length || 0}
+          {item.subcategoryCount ?? item.subcategories?.length ?? 0}
         </span>
       ),
     },
@@ -276,7 +378,15 @@ export default function CategoriesPage() {
       key: "actions",
       label: "Actions",
       render: (item: Category) => (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
+          <Button
+            variant="ghost"
+            size="sm"
+            title="View subcategories"
+            onClick={() => openViewSubcategories(item)}
+          >
+            <Eye size={14} className="text-blue-600" />
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => openEditCat(item)}>
             <Pencil size={14} />
           </Button>
@@ -446,6 +556,50 @@ export default function CategoriesPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* View subcategories */}
+      <Modal
+        open={viewModalOpen}
+        onOpenChange={setViewModalOpen}
+        title={viewCategoryName ? `${viewCategoryName} — Subcategories` : "Subcategories"}
+        description="All subcategories under this category"
+        className="max-w-2xl"
+      >
+        {viewLoading ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">Loading…</p>
+        ) : viewSubs.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center border border-dashed border-border rounded-lg">
+            No subcategories yet. Use the + button on the row to add one.
+          </p>
+        ) : (
+          <div className="border border-border rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left">
+                <tr>
+                  <th className="px-3 py-2 font-medium">#</th>
+                  <th className="px-3 py-2 font-medium">Name</th>
+                  <th className="px-3 py-2 font-medium hidden sm:table-cell">Description</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {viewSubs.map((s, idx) => (
+                  <tr key={s.id} className="border-t border-border">
+                    <td className="px-3 py-2 text-muted-foreground">{idx + 1}</td>
+                    <td className="px-3 py-2 font-medium">{s.name}</td>
+                    <td className="px-3 py-2 text-muted-foreground line-clamp-2 max-w-[200px] hidden sm:table-cell">
+                      {s.description || "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <StatusBadge status={s.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Modal>
 
       {/* Subcategory Modal */}

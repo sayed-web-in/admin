@@ -57,13 +57,38 @@ export default function ProductDetailPage() {
     if (!id) return;
     setLoading(true);
     Promise.all([
-      apiFetch<{ product: ProductDetail }>(`/products/${id}`),
+      apiFetch<Record<string, unknown>>(`/products/${id}`),
       apiFetch<{ variants: BranchVariant[] }>(
         `/products/${id}/branch-variants`
       ),
     ])
-      .then(([pRes, vRes]) => {
-        setProduct(pRes.product);
+      .then(([raw, vRes]) => {
+        const p = raw as {
+          id: number;
+          name: string;
+          type: string;
+          sku?: string | null;
+          category?: { name: string } | null;
+          brand?: { name: string } | null;
+          unit?: { name: string } | null;
+          status: string;
+          description?: string | null;
+          images?: { url: string }[];
+          hasImei?: boolean;
+        };
+        setProduct({
+          id: p.id,
+          name: p.name,
+          type: p.type,
+          sku: p.sku ?? undefined,
+          categoryName: p.category?.name,
+          brandName: p.brand?.name,
+          unitName: p.unit?.name,
+          status: p.status,
+          description: p.description ?? undefined,
+          images: p.images?.map((i) => i.url) ?? [],
+          hasImei: p.hasImei,
+        });
         setBranchVariants(vRes.variants || []);
       })
       .catch(() => {})

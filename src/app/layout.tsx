@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { AdminHeader } from "@/components/layout/Header";
+import { Toaster } from "@/components/ui/sonner";
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "Admin - Future Technology",
@@ -10,13 +13,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className="h-full" suppressHydrationWarning>
+    <html lang="en" className={cn("h-full", "font-sans", geist.variable)} suppressHydrationWarning>
       <body className="min-h-full bg-muted/30" suppressHydrationWarning>
-        <Sidebar />
-        <div className="lg:ml-64 min-h-screen flex flex-col">
-          <AdminHeader />
-          <main className="flex-1 p-4 md:p-6">{children}</main>
-        </div>
+        {children}
+        <Toaster />
       </body>
     </html>
   );

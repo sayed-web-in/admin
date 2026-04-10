@@ -39,3 +39,15 @@ export async function apiUpload(path: string, formData: FormData): Promise<any> 
   }
   return res.json();
 }
+
+/** Product / variant images: server resizes and converts to WebP (`{ data: { url } }`, seller-admin shape). */
+export async function uploadProductImage(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await apiUpload("/upload/product-image", fd);
+  const url = res?.data?.url ?? res?.url;
+  if (!url || typeof url !== "string") {
+    throw new Error("Unexpected image upload response");
+  }
+  return url;
+}

@@ -10,6 +10,7 @@ import {
   Trash2,
   Plus,
 } from "lucide-react";
+import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
@@ -27,6 +28,20 @@ interface Unit {
   status: string;
 }
 
+function normalizeUnit(raw: {
+  id: number;
+  name: string;
+  shortName?: string | null;
+  isActive?: boolean;
+}): Unit {
+  return {
+    id: raw.id,
+    name: raw.name,
+    shortName: raw.shortName ?? "",
+    status: raw.isActive ? "active" : "inactive",
+  };
+}
+
 export default function UnitsPage() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,8 +57,18 @@ export default function UnitsPage() {
   const fetchUnits = async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<{ units: Unit[] }>("/units");
-      setUnits(data.units || []);
+      const res = await apiFetch<
+        | { data: Parameters<typeof normalizeUnit>[0][]; total?: number }
+        | { units: Unit[] }
+      >("/units?limit=500");
+      const list = Array.isArray(res)
+        ? res
+        : "data" in res && Array.isArray(res.data)
+          ? res.data
+          : "units" in res
+            ? res.units
+            : [];
+      setUnits(list.map((u) => normalizeUnit(u)));
     } catch {
       setUnits([]);
     } finally {
@@ -60,7 +85,7 @@ export default function UnitsPage() {
       units.filter(
         (u) =>
           u.name.toLowerCase().includes(search.toLowerCase()) ||
-          u.shortName.toLowerCase().includes(search.toLowerCase())
+          (u.shortName ?? "").toLowerCase().includes(search.toLowerCase())
       ),
     [units, search]
   );
@@ -95,11 +120,11 @@ export default function UnitsPage() {
       const payload = {
         name: formName,
         shortName: formShort,
-        status: formStatus ? "active" : "inactive",
+        isActive: formStatus,
       };
       if (editing) {
         await apiFetch(`/units/${editing.id}`, {
-          method: "PUT",
+          method: "PATCH",
           body: JSON.stringify(payload),
         });
       } else {
@@ -110,8 +135,9 @@ export default function UnitsPage() {
       }
       setModalOpen(false);
       fetchUnits();
+      toast.success(editing ? "Unit updated" : "Unit created");
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Something went wrong");
     } finally {
       setSaving(false);
     }
@@ -122,8 +148,9 @@ export default function UnitsPage() {
     try {
       await apiFetch(`/units/${id}`, { method: "DELETE" });
       fetchUnits();
+      toast.success("Unit deleted");
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Delete failed");
     }
   };
 
