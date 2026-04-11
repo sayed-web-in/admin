@@ -82,7 +82,7 @@ export function AdminHeader({
   return (
     <header
       className={cn(
-        "sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-2 sm:gap-3 sm:px-4"
+        "sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-2 sm:gap-3 sm:px-4"
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-3">

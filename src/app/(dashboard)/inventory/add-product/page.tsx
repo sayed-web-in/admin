@@ -14,6 +14,11 @@ import {
   Sparkles,
   Eye,
   X,
+  LayoutGrid,
+  Layers,
+  ClipboardList,
+  Store,
+  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -64,11 +69,51 @@ function formatStoreDiscount(discountType: string, discountValue: number) {
   return formatPrice(discountValue);
 }
 
+const cardShell =
+  "overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm ring-1 ring-black/[0.03] dark:ring-white/[0.06]";
+
+function SectionHeader({
+  icon: Icon,
+  title,
+  description,
+  compact,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description?: string;
+  /** Omit bottom border/margin when sitting in a toolbar row (e.g. with actions). */
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={
+        compact
+          ? "flex min-w-0 flex-1 items-start gap-3"
+          : "mb-5 flex items-start gap-3 border-b border-border/50 pb-4"
+      }
+    >
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary shadow-sm ring-1 ring-primary/10">
+        <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+      </div>
+      <div className="min-w-0 pt-0.5">
+        <h2 className="text-base font-semibold tracking-tight text-foreground sm:text-lg">
+          {title}
+        </h2>
+        {description ? (
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function AddProductPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground">
+        <div className="flex min-h-[50vh] w-full min-w-0 items-center justify-center rounded-2xl border border-dashed border-border/60 bg-muted/20 text-sm text-muted-foreground">
           Loading…
         </div>
       }
@@ -293,60 +338,80 @@ function AddProductPageContent() {
 
   if (editLoading || dataLoading) {
     return (
-      <div className="-mx-4 md:-mx-6 w-[calc(100%+2rem)] max-w-none md:w-[calc(100%+3rem)] px-3 sm:px-4 md:px-5 py-6 sm:py-8">
-        <p className="text-center text-muted-foreground py-12 sm:py-16">Loading…</p>
+      <div className="w-full min-w-0 py-8 sm:py-12">
+        <div className="flex min-h-[40vh] items-center justify-center rounded-2xl border border-dashed border-border/60 bg-muted/15 text-muted-foreground">
+          Loading…
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="-mx-4 md:-mx-6 w-[calc(100%+2rem)] max-w-none md:w-[calc(100%+3rem)] px-3 sm:px-4 md:px-5 pb-6 sm:pb-8 md:pb-10 space-y-4 sm:space-y-5 md:space-y-6">
-      <header className="mb-4 sm:mb-5 flex flex-col gap-3 sm:gap-4 border-b border-border pb-3 sm:pb-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:h-14 sm:w-14 sm:rounded-2xl">
-            <Package className="h-6 w-6 sm:h-8 sm:w-8" aria-hidden />
+    <div className="w-full min-w-0 space-y-5 pb-8 pt-1 sm:space-y-6 sm:pb-10 sm:pt-2">
+      <header className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-primary/[0.06] p-5 shadow-md ring-1 ring-black/[0.04] dark:ring-white/[0.08] sm:p-6">
+        <div
+          className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-primary/[0.12] blur-3xl"
+          aria-hidden
+        />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 flex-1 items-start gap-3 sm:gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/25 sm:h-14 sm:w-14">
+              <Package className="h-6 w-6 sm:h-7 sm:w-7" aria-hidden />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+                  {isEditMode ? "Edit product" : "Add product"}
+                </h1>
+                {productStatus ? (
+                  <Badge
+                    variant="secondary"
+                    className="rounded-full px-2.5 py-0.5 text-xs font-medium capitalize"
+                  >
+                    {String(productStatus).toLowerCase()}
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                {isEditMode
+                  ? "Update details, variants, and store listings in one place."
+                  : "Set up the catalog entry, then add it to branches when you save."}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-              {isEditMode ? "Edit product" : "Add product"}
-            </h1>
-            <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-              {isEditMode
-                ? "Update product details"
-                : "Create a new product in your inventory"}
-            </p>
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+              title="Back"
+              onClick={() => router.back()}
+            >
+              <ArrowLeft className="h-4 w-4 shrink-0" />
+              Back
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => resetForm()}
+              className="h-10 w-full gap-1.5 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+            >
+              <RotateCcw className="h-4 w-4 shrink-0" />
+              Reset
+            </Button>
           </div>
-        </div>
-        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-10 w-full gap-2 sm:h-9 sm:w-auto"
-            title="Back"
-            onClick={() => router.back()}
-          >
-            <ArrowLeft className="h-4 w-4 shrink-0" />
-            Back
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => resetForm()}
-            className="h-10 w-full gap-1.5 sm:h-9 sm:w-auto"
-          >
-            <RotateCcw className="h-4 w-4 shrink-0" />
-            Reset
-          </Button>
         </div>
       </header>
 
-      <div className="space-y-4 sm:space-y-5 md:space-y-6">
-          <section className="bg-card rounded-xl border border-border p-4 sm:p-5 md:p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground mb-3 sm:mb-4">
-              Basic details
-            </h2>
+      <div className="space-y-5 sm:space-y-6">
+          <section className={`${cardShell} p-5 sm:p-6 md:p-7`}>
+            <SectionHeader
+              icon={LayoutGrid}
+              title="Basic details"
+              description="Product type, category, brand, unit, tax, name, and serial tracking."
+            />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
               <div>
                 <label className="text-sm font-medium mb-1.5 block">
@@ -359,7 +424,7 @@ function AddProductPageContent() {
                   }
                   disabled={isProductTypeDisabled}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="h-10 w-full rounded-xl">
                     <SelectValue placeholder="Select product type" />
                   </SelectTrigger>
                   <SelectContent position="popper" side="bottom" align="start">
@@ -505,7 +570,7 @@ function AddProductPageContent() {
                     setField("taxRateId", val === "none" ? 0 : Number(val))
                   }
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="h-10 w-full rounded-xl">
                     <SelectValue placeholder="No tax" />
                   </SelectTrigger>
                   <SelectContent position="popper" side="bottom" align="start">
@@ -589,7 +654,7 @@ function AddProductPageContent() {
                   }
                   disabled={isSerialDisabled}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="h-10 w-full rounded-xl">
                     <SelectValue placeholder="Select option" />
                   </SelectTrigger>
                   <SelectContent position="popper" side="bottom" align="start">
@@ -610,18 +675,14 @@ function AddProductPageContent() {
           </section>
 
           {form.productType === "single" ? (
-            <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-              <div className="border-b border-border px-4 py-3 sm:px-5 sm:py-4 md:px-6">
-                <h2 className="text-lg font-semibold text-foreground">
-                  Images
-                </h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  Images are resized and saved as WebP when you save the product
-                  (same flow as seller admin).
-                </p>
-              </div>
-              <div className="space-y-4 p-4 sm:p-5 md:p-6">
-                <div className="rounded-xl border-2 border-dashed border-border/70 bg-muted/20 p-6 text-center sm:p-8">
+            <section className={`${cardShell} p-5 sm:p-6 md:p-7`}>
+              <SectionHeader
+                icon={ImageIcon}
+                title="Product images"
+                description="Resized and saved as WebP when you save (same flow as seller admin)."
+              />
+              <div className="space-y-5">
+                <div className="rounded-2xl border-2 border-dashed border-primary/20 bg-gradient-to-b from-muted/30 to-muted/10 p-6 text-center sm:p-8">
                   <ImageIcon
                     className="mx-auto mb-3 h-12 w-12 text-muted-foreground opacity-80 sm:mb-4"
                     aria-hidden
@@ -689,19 +750,17 @@ function AddProductPageContent() {
               </div>
             </section>
           ) : (
-            <section className="space-y-5 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5 md:p-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                    Product variants
-                  </h2>
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    Manage variant images, attributes, and SKUs
-                  </p>
-                </div>
+            <section className={`${cardShell} space-y-5 p-5 sm:p-6 md:p-7`}>
+              <div className="flex flex-col gap-4 border-b border-border/50 pb-4 sm:flex-row sm:items-end sm:justify-between">
+                <SectionHeader
+                  compact
+                  icon={Layers}
+                  title="Product variants"
+                  description="Images, attributes, and SKUs for each variation."
+                />
                 <Button
                   type="button"
-                  className="h-10 w-full shrink-0 gap-2 sm:h-9 sm:w-auto"
+                  className="h-10 w-full shrink-0 gap-2 rounded-xl sm:h-9 sm:w-auto"
                   onClick={() => {
                     setVariantEdit(null);
                     setVariantModalOpen(true);
@@ -854,71 +913,60 @@ function AddProductPageContent() {
             </section>
           )}
 
-          <section className="bg-card rounded-xl border border-border p-4 sm:p-5 md:p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground mb-4">
-              Specifications
-            </h2>
+          <section className={`${cardShell} p-5 sm:p-6 md:p-7`}>
+            <SectionHeader
+              icon={ClipboardList}
+              title="Specifications"
+              description="Key–value fields shown on the product page (optional)."
+            />
             <SpecBuilder
               specs={form.specifications}
               onChange={(specs) => setField("specifications", specs)}
             />
           </section>
 
-          <section className="bg-card rounded-xl border border-border p-4 sm:p-5 md:p-6 shadow-sm">
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-              <FileText className="h-5 w-5 shrink-0 text-primary sm:mt-0.5" aria-hidden />
-              <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-foreground">
-                  Product description
-                </h2>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  Optional rich text — saved together with product details.
-                </p>
-              </div>
-            </div>
+          <section className={`${cardShell} p-5 sm:p-6 md:p-7`}>
+            <SectionHeader
+              icon={FileText}
+              title="Product description"
+              description="Optional rich text — saved together with product details."
+            />
             <DescriptionEditor
               value={form.description}
               onChange={(html) => setField("description", html)}
             />
           </section>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {productStatus ? (
-              <span className="text-sm text-muted-foreground">
-                Status: <Badge variant="secondary">{productStatus}</Badge>
-              </span>
-            ) : (
-              <span className="hidden sm:block sm:flex-1" aria-hidden />
-            )}
-            <div className="flex w-full justify-end sm:w-auto">
-              <Button
-                type="button"
-                className="h-11 w-full min-w-[160px] sm:h-10 sm:w-auto"
-                onClick={() => void saveProductInfo()}
-                disabled={actionLoading || !isTab1Valid()}
-              >
-                <Package size={16} className="mr-2 shrink-0" />
-                {actionLoading ? "Saving…" : "Save product"}
-              </Button>
-            </div>
+          <div
+            className={`${cardShell} sticky bottom-2 z-10 flex flex-col gap-3 p-4 shadow-md backdrop-blur-sm supports-[backdrop-filter]:bg-card/90 sm:flex-row sm:items-center sm:justify-end sm:p-4`}
+          >
+            <Button
+              type="button"
+              className="h-11 w-full min-w-[180px] rounded-xl shadow-sm sm:ml-auto sm:h-10 sm:w-auto"
+              onClick={() => void saveProductInfo()}
+              disabled={actionLoading || !isTab1Valid()}
+            >
+              <Package size={16} className="mr-2 shrink-0" />
+              {actionLoading ? "Saving…" : "Save product"}
+            </Button>
           </div>
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5 md:px-6">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold tracking-tight text-foreground">
-              Store product
-            </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              {draftProductId
-                ? "Add product to branches and set prices"
-                : "Save the product above first, then add to branches and set prices"}
-            </p>
-          </div>
+      <section className={cardShell}>
+        <div className="flex flex-col gap-4 border-b border-border/50 bg-muted/15 px-5 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6 sm:py-5">
+          <SectionHeader
+            compact
+            icon={Store}
+            title="Store product"
+            description={
+              draftProductId
+                ? "Add this product to branches and set prices."
+                : "Save the product above first, then add it to branches here."
+            }
+          />
           <Button
             type="button"
-            className="h-10 w-full shrink-0 gap-2 sm:h-9 sm:w-auto"
+            className="h-10 w-full shrink-0 gap-2 rounded-xl sm:h-9 sm:w-auto"
             disabled={!draftProductId}
             onClick={() => setStoreModalOpen(true)}
           >
@@ -926,8 +974,8 @@ function AddProductPageContent() {
             Add store product
           </Button>
         </div>
-        <div className="p-4 sm:p-5 md:p-6">
-          <div className="overflow-x-auto rounded-xl border border-border">
+        <div className="p-5 sm:p-6 md:p-7">
+          <div className="overflow-x-auto rounded-xl border border-border/80 ring-1 ring-black/[0.03] dark:ring-white/[0.05]">
             <table className="w-full min-w-[1100px] border-collapse text-sm">
               <thead className="bg-muted/45">
                 <tr className="border-b border-border">

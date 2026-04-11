@@ -519,7 +519,7 @@ export function Sidebar({
       {mobileOpen && (
         <button
           type="button"
-          className="fixed bottom-0 left-0 right-0 top-14 z-[50] bg-black/45 backdrop-blur-[2px] transition-opacity duration-300 ease-out lg:hidden"
+          className="fixed bottom-0 left-0 right-0 top-16 z-[50] bg-black/45 backdrop-blur-[2px] transition-opacity duration-300 ease-out lg:hidden"
           aria-label="Close sidebar"
           onClick={closeMobile}
         />
@@ -528,34 +528,28 @@ export function Sidebar({
       <aside
         className={cn(
           "fixed left-0 z-[55] flex w-[min(18rem,calc(100vw-2.5rem))] flex-col border-r border-border bg-card shadow-[4px_0_24px_-8px_rgba(0,0,0,0.08)]",
-          /* Mobile: under header (3.5rem), smooth horizontal slide */
-          "top-14 h-[calc(100dvh-3.5rem)] max-h-[calc(100dvh-3.5rem)] transition-[transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform",
+          /* Mobile: under header (4rem / h-16), smooth horizontal slide */
+          "top-16 h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] transition-[transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform",
           "lg:top-0 lg:z-50 lg:h-dvh lg:max-h-screen lg:will-change-auto lg:transition-[transform,width] lg:duration-200 lg:ease-out",
           collapsedDesktop ? "lg:w-[4.5rem]" : "lg:w-64",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        {/* Sticky header: does not scroll with nav */}
-        <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-card/95 px-3 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-card/80">
+        {/* Sticky header: same height as main AdminHeader (h-16) */}
+        <div className="flex h-16 shrink-0 items-center border-b border-border bg-card/95 px-3 backdrop-blur-md supports-[backdrop-filter]:bg-card/80">
           {!collapsedDesktop ? (
-            <div className="flex items-center justify-between gap-2">
+            <>
               <Link
                 href="/"
                 onClick={closeMobile}
-                className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl p-1 transition-opacity hover:opacity-90"
+                className="flex min-w-0 flex-1 flex-col justify-center rounded-xl px-1 py-0.5 leading-tight transition-opacity hover:opacity-90"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/85 text-sm font-bold text-primary-foreground shadow-md">
-                  F
-                </div>
-                <div className="min-w-0 leading-tight">
-                  <span className="block truncate text-sm font-bold tracking-tight text-foreground">
-                    Future{" "}
-                    <span className="text-primary">Tech</span>
-                  </span>
-                  <span className="text-[0.65rem] font-medium uppercase tracking-widest text-muted-foreground">
-                    Admin
-                  </span>
-                </div>
+                <span className="block truncate text-sm font-bold tracking-tight text-foreground">
+                  Future <span className="text-primary">Tech</span>
+                </span>
+                <span className="text-[0.65rem] font-medium uppercase tracking-widest text-muted-foreground">
+                  Admin
+                </span>
               </Link>
               <div className="flex shrink-0 items-center gap-0.5">
                 <button
@@ -576,16 +570,9 @@ export function Sidebar({
                   <X className="size-5" />
                 </button>
               </div>
-            </div>
+            </>
           ) : (
-            <div className="flex flex-col items-center gap-2 py-1">
-              <Link
-                href="/"
-                title="Future Tech"
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/85 text-sm font-bold text-primary-foreground shadow-md"
-              >
-                F
-              </Link>
+            <div className="flex w-full items-center justify-center">
               <button
                 type="button"
                 onClick={onToggleCollapse}

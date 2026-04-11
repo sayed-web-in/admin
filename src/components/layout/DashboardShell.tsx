@@ -60,7 +60,9 @@ export function DashboardShell({
         )}
       >
         <AdminHeader onToggleSidebar={() => setMobileOpen(true)} />
-        <main className="flex-1 min-w-0 p-4 md:p-6">{children}</main>
+        <main className="flex-1 min-w-0 px-3 pt-2 pb-4 md:px-4 md:pt-3 md:pb-5">
+          {children}
+        </main>
       </div>
     </>
   );
