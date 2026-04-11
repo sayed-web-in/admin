@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -65,6 +65,20 @@ function formatStoreDiscount(discountType: string, discountValue: number) {
 }
 
 export default function AddProductPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground">
+          Loading…
+        </div>
+      }
+    >
+      <AddProductPageContent />
+    </Suspense>
+  );
+}
+
+function AddProductPageContent() {
   const {
     isEditMode,
     editLoading,
