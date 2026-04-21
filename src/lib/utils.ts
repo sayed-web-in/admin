@@ -5,14 +5,12 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatPrice(value: number, currency = "BDT"): string {
+/** Whole taka (no decimals), Bengali digit grouping, ৳ prefix. */
+export function formatPrice(value: number, _currency = "BDT"): string {
   if (Number.isNaN(value)) return "—"
-  return new Intl.NumberFormat("en-BD", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
+  const n = Math.round(Number(value))
+  const formatted = n.toLocaleString("en-BD")
+  return `৳${formatted}`
 }
 
 export function formatDate(iso: string): string {

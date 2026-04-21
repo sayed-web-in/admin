@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   FolderTree,
   Layers,
@@ -11,10 +12,25 @@ import {
   Plus,
   ImageIcon,
   Eye,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch, apiUpload } from "@/lib/api";
-import { PageHeader } from "@/components/common/PageHeader";
+import { unwrapPaginated, extractBranches } from "@/lib/apiList";
+import { resolveMediaUrl } from "@/app/(dashboard)/inventory/add-product/media";
+import {
+  INVENTORY_CARD_SHELL,
+  InventoryListPageHeader,
+  InventorySectionHeader,
+  InventoryStatusSwitch,
+  inventoryCheckboxClass,
+} from "@/components/inventory/InventoryCrudLayout";
+import { InventoryTablePagination } from "@/components/inventory/InventoryTablePagination";
+import {
+  TableRowActions,
+  TableRowActionButton,
+  tableActionIconClassName,
+} from "@/components/common/TableRowActions";
 import { StatCard } from "@/components/common/StatCard";
 import { FilterBar } from "@/components/common/FilterBar";
 import { DataTable } from "@/components/common/DataTable";
@@ -103,11 +119,17 @@ function normalizeCategory(raw: {
   };
 }
 
+const PAGE_SIZE = 20;
+
 export default function CategoriesPage() {
+  const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ total: 0, lastPage: 1 });
 
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [editingCat, setEditingCat] = useState<Category | null>(null);
@@ -134,62 +156,66 @@ export default function CategoriesPage() {
 
   const [saving, setSaving] = useState(false);
 
-  const fetchCategories = async () => {
+  const fetchCategories = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch<
-        | { data: Parameters<typeof normalizeCategory>[0][]; total?: number }
-        | { categories: Category[] }
-      >("/categories?limit=500");
-      const list = Array.isArray(res)
-        ? res
-        : "data" in res && Array.isArray(res.data)
-          ? res.data
-          : "categories" in res
-            ? res.categories
-            : [];
-      setCategories(list.map((c) => normalizeCategory(c)));
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("limit", String(PAGE_SIZE));
+      if (searchQuery) params.set("search", searchQuery);
+      const res = await apiFetch<unknown>(`/categories?${params.toString()}`);
+      const paginated = unwrapPaginated<Parameters<typeof normalizeCategory>[0]>(res);
+      if (paginated) {
+        setCategories(paginated.data.map((c) => normalizeCategory(c)));
+        setMeta({ total: paginated.total, lastPage: paginated.lastPage });
+      } else {
+        setCategories([]);
+        setMeta({ total: 0, lastPage: 1 });
+      }
     } catch {
       setCategories([]);
+      setMeta({ total: 0, lastPage: 1 });
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, searchQuery]);
 
   const fetchBranches = async () => {
     try {
-      const data = await apiFetch<Branch[] | { branches: Branch[] }>("/branches");
-      setBranches(Array.isArray(data) ? data : data.branches ?? []);
+      const data = await apiFetch<unknown>("/branches");
+      setBranches(extractBranches(data));
     } catch {
       setBranches([]);
     }
   };
 
   useEffect(() => {
-    fetchCategories();
-    fetchBranches();
-  }, []);
+    const t = setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  const filtered = useMemo(
-    () =>
-      categories.filter((c) =>
-        c.name.toLowerCase().includes(search.toLowerCase())
-      ),
-    [categories, search]
-  );
+  useEffect(() => {
+    void fetchCategories();
+  }, [fetchCategories]);
+
+  useEffect(() => {
+    void fetchBranches();
+  }, []);
 
   const stats = useMemo(() => {
     const totalSubs = categories.reduce(
       (sum, c) =>
-        sum +
-        (c.subcategoryCount ?? c.subcategories?.length ?? 0),
+        sum + (c.subcategoryCount ?? c.subcategories?.length ?? 0),
       0
     );
     const active = categories.filter((c) => c.status === "active").length;
     const latest =
-      categories.length > 0 ? categories[categories.length - 1].name : "N/A";
-    return { total: categories.length, totalSubs, active, latest };
-  }, [categories]);
+      categories.length > 0 ? categories[categories.length - 1].name : "—";
+    return { total: meta.total, totalSubs, active, latest };
+  }, [categories, meta.total]);
 
   const openAddCat = () => {
     setEditingCat(null);
@@ -270,7 +296,7 @@ export default function CategoriesPage() {
       };
       if (editingCat) {
         await apiFetch(`/categories/${editingCat.id}`, {
-          method: "PUT",
+          method: "PATCH",
           body: JSON.stringify(payload),
         });
       } else {
@@ -280,7 +306,7 @@ export default function CategoriesPage() {
         });
       }
       setCatModalOpen(false);
-      fetchCategories();
+      void fetchCategories();
       toast.success(editingCat ? "Category updated" : "Category created");
     } catch (err: any) {
       toast.error(err.message || "Something went wrong");
@@ -310,7 +336,7 @@ export default function CategoriesPage() {
         }),
       });
       setSubModalOpen(false);
-      fetchCategories();
+      void fetchCategories();
       toast.success("Subcategory created");
     } catch (err: any) {
       toast.error(err.message || "Something went wrong");
@@ -323,7 +349,8 @@ export default function CategoriesPage() {
     if (!confirm("Are you sure you want to delete this category?")) return;
     try {
       await apiFetch(`/categories/${id}`, { method: "DELETE" });
-      fetchCategories();
+      if (categories.length <= 1 && page > 1) setPage((p) => Math.max(1, p - 1));
+      else void fetchCategories();
       toast.success("Category deleted");
     } catch (err: any) {
       toast.error(err.message || "Delete failed");
@@ -339,22 +366,31 @@ export default function CategoriesPage() {
     },
     {
       key: "image",
-      label: "Image",
-      className: "w-16",
-      render: (item: Category) =>
-        item.image ? (
+      label: "Img",
+      className: "w-[4.75rem]",
+      render: (item: Category) => {
+        const src = item.image ? resolveMediaUrl(item.image) : "";
+        return src ? (
           <img
-            src={item.image}
-            alt={item.name}
-            className="w-10 h-10 rounded-lg object-cover"
+            src={src}
+            alt=""
+            className="h-12 w-12 rounded-xl border border-border/70 object-cover"
+            loading="lazy"
           />
         ) : (
-          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-            <ImageIcon size={16} className="text-muted-foreground" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border/60 bg-muted/30 text-muted-foreground">
+            <ImageIcon className="h-5 w-5" aria-hidden />
           </div>
-        ),
+        );
+      },
     },
-    { key: "name", label: "Name" },
+    {
+      key: "name",
+      label: "Name",
+      render: (item: Category) => (
+        <span className="font-semibold text-foreground">{item.name}</span>
+      ),
+    },
     {
       key: "subcategories",
       label: "Subcategories",
@@ -378,67 +414,108 @@ export default function CategoriesPage() {
       key: "actions",
       label: "Actions",
       render: (item: Category) => (
-        <div className="flex items-center gap-1 flex-wrap">
-          <Button
-            variant="ghost"
-            size="sm"
+        <TableRowActions>
+          <TableRowActionButton
             title="View subcategories"
-            onClick={() => openViewSubcategories(item)}
+            onClick={() => void openViewSubcategories(item)}
           >
-            <Eye size={14} className="text-blue-600" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => openEditCat(item)}>
-            <Pencil size={14} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleDelete(item.id)}
+            <Eye className={tableActionIconClassName} aria-hidden />
+          </TableRowActionButton>
+          <TableRowActionButton title="Edit" onClick={() => openEditCat(item)}>
+            <Pencil className={tableActionIconClassName} aria-hidden />
+          </TableRowActionButton>
+          <TableRowActionButton
+            variant="danger"
+            title="Delete"
+            onClick={() => void handleDelete(item.id)}
           >
-            <Trash2 size={14} className="text-red-500" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => openAddSub(item.id)}>
-            <Plus size={14} className="text-orange-500" />
-          </Button>
-        </div>
+            <Trash2 className={tableActionIconClassName} aria-hidden />
+          </TableRowActionButton>
+          <TableRowActionButton title="Add subcategory" onClick={() => openAddSub(item.id)}>
+            <Plus className={tableActionIconClassName} aria-hidden />
+          </TableRowActionButton>
+        </TableRowActions>
       ),
     },
   ];
 
   return (
-    <div className="p-4 md:p-6">
-      <PageHeader
-        title="Category Management"
-        description="Manage product categories and subcategories"
-        action={
-          <Button onClick={openAddCat}>
-            <Plus size={16} className="mr-2" /> Add Category
-          </Button>
-        }
-      />
+    <div className="w-full min-w-0 space-y-5 pb-8 pt-1 sm:space-y-6 sm:pb-10 sm:pt-2">
+      <InventoryListPageHeader
+        icon={FolderTree}
+        title="Categories"
+        description="Manage categories and subcategories — paginated list with API search."
+      >
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+          onClick={() => router.back()}
+        >
+          Back
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+          onClick={() => void fetchCategories()}
+        >
+          <RotateCcw className="h-4 w-4 shrink-0" aria-hidden />
+          Refresh
+        </Button>
+        <Button
+          type="button"
+          className="h-10 w-full gap-2 rounded-xl shadow-sm sm:h-9 sm:w-auto"
+          onClick={openAddCat}
+        >
+          <Plus className="h-4 w-4 shrink-0" aria-hidden />
+          Add category
+        </Button>
+      </InventoryListPageHeader>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          title="Total Categories"
-          value={stats.total}
-          icon={FolderTree}
-        />
-        <StatCard
-          title="Total Subcategories"
-          value={stats.totalSubs}
-          icon={Layers}
-        />
-        <StatCard title="Active" value={stats.active} icon={CheckCircle} />
-        <StatCard title="Latest" value={stats.latest} icon={Star} />
+      <div className="space-y-5 sm:space-y-6">
+        <section className={`${INVENTORY_CARD_SHELL} p-5 sm:p-6 md:p-7`}>
+          <InventorySectionHeader
+            icon={Layers}
+            title="Overview"
+            description="Total categories is server-wide. Subcategories / active / latest are for the current page."
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard title="Total categories" value={stats.total} icon={FolderTree} />
+            <StatCard title="Subcategories (page)" value={stats.totalSubs} icon={Layers} />
+            <StatCard title="Active (page)" value={stats.active} icon={CheckCircle} />
+            <StatCard title="Latest (page)" value={stats.latest} icon={Star} />
+          </div>
+        </section>
+
+        <section className={INVENTORY_CARD_SHELL}>
+          <div className="border-b border-border/50 bg-muted/15 px-5 py-4 sm:px-6 sm:py-5">
+            <InventorySectionHeader
+              compact
+              icon={FolderTree}
+              title="Category list"
+              description={`${PAGE_SIZE} rows per page · search hits the API.`}
+            />
+          </div>
+          <div className="space-y-4 p-5 sm:p-6 md:p-7">
+            <FilterBar
+              searchValue={searchInput}
+              onSearchChange={setSearchInput}
+              searchPlaceholder="Search categories…"
+            />
+            <DataTable columns={columns} data={categories} loading={loading} inventoryStyle />
+            <InventoryTablePagination
+              page={page}
+              lastPage={meta.lastPage}
+              total={meta.total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+          </div>
+        </section>
       </div>
-
-      <FilterBar
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search categories..."
-      />
-
-      <DataTable columns={columns} data={filtered} loading={loading} />
 
       {/* Category Modal */}
       <Modal
@@ -510,7 +587,7 @@ export default function CategoriesPage() {
                             : [...prev, b.id]
                         )
                       }
-                      className="accent-orange-500"
+                      className={inventoryCheckboxClass}
                     />
                     {b.name}
                   </label>
@@ -531,18 +608,7 @@ export default function CategoriesPage() {
           </div>
           <div>
             <label className="text-sm font-medium mb-1.5 block">Status</label>
-            <button
-              type="button"
-              onClick={() => setCatStatus(!catStatus)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${catStatus ? "bg-orange-500" : "bg-gray-300"}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${catStatus ? "translate-x-6" : "translate-x-1"}`}
-              />
-            </button>
-            <span className="ml-2 text-sm">
-              {catStatus ? "Active" : "Inactive"}
-            </span>
+            <InventoryStatusSwitch checked={catStatus} onCheckedChange={setCatStatus} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setCatModalOpen(false)}>
@@ -654,18 +720,7 @@ export default function CategoriesPage() {
           </div>
           <div>
             <label className="text-sm font-medium mb-1.5 block">Status</label>
-            <button
-              type="button"
-              onClick={() => setSubStatus(!subStatus)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${subStatus ? "bg-orange-500" : "bg-gray-300"}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${subStatus ? "translate-x-6" : "translate-x-1"}`}
-              />
-            </button>
-            <span className="ml-2 text-sm">
-              {subStatus ? "Active" : "Inactive"}
-            </span>
+            <InventoryStatusSwitch checked={subStatus} onCheckedChange={setSubStatus} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setSubModalOpen(false)}>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Ruler,
   CheckCircle,
@@ -9,13 +10,27 @@ import {
   Pencil,
   Trash2,
   Plus,
+  RotateCcw,
+  LayoutGrid,
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
-import { PageHeader } from "@/components/common/PageHeader";
+import { unwrapPaginated, extractApiList } from "@/lib/apiList";
 import { StatCard } from "@/components/common/StatCard";
 import { FilterBar } from "@/components/common/FilterBar";
 import { DataTable } from "@/components/common/DataTable";
+import {
+  TableRowActions,
+  TableRowActionButton,
+  tableActionIconClassName,
+} from "@/components/common/TableRowActions";
+import {
+  INVENTORY_CARD_SHELL,
+  InventoryListPageHeader,
+  InventorySectionHeader,
+  InventoryStatusSwitch,
+} from "@/components/inventory/InventoryCrudLayout";
+import { InventoryTablePagination } from "@/components/inventory/InventoryTablePagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
@@ -42,10 +57,16 @@ function normalizeUnit(raw: {
   };
 }
 
+const PAGE_SIZE = 20;
+
 export default function UnitsPage() {
+  const router = useRouter();
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ total: 0, lastPage: 1 });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Unit | null>(null);
 
@@ -54,48 +75,51 @@ export default function UnitsPage() {
   const [formStatus, setFormStatus] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const fetchUnits = async () => {
+  const fetchUnits = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch<
-        | { data: Parameters<typeof normalizeUnit>[0][]; total?: number }
-        | { units: Unit[] }
-      >("/units?limit=500");
-      const list = Array.isArray(res)
-        ? res
-        : "data" in res && Array.isArray(res.data)
-          ? res.data
-          : "units" in res
-            ? res.units
-            : [];
-      setUnits(list.map((u) => normalizeUnit(u)));
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("limit", String(PAGE_SIZE));
+      if (searchQuery) params.set("search", searchQuery);
+      const res = await apiFetch<unknown>(`/units?${params.toString()}`);
+      const paginated = unwrapPaginated<Parameters<typeof normalizeUnit>[0]>(res);
+      if (paginated) {
+        setUnits(paginated.data.map((u) => normalizeUnit(u)));
+        setMeta({ total: paginated.total, lastPage: paginated.lastPage });
+      } else {
+        const list = extractApiList<Parameters<typeof normalizeUnit>[0]>(res, [
+          "units",
+        ]);
+        setUnits(list.map((u) => normalizeUnit(u)));
+        setMeta({ total: list.length, lastPage: 1 });
+      }
     } catch {
       setUnits([]);
+      setMeta({ total: 0, lastPage: 1 });
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, searchQuery]);
 
   useEffect(() => {
-    fetchUnits();
-  }, []);
+    const t = setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  const filtered = useMemo(
-    () =>
-      units.filter(
-        (u) =>
-          u.name.toLowerCase().includes(search.toLowerCase()) ||
-          (u.shortName ?? "").toLowerCase().includes(search.toLowerCase())
-      ),
-    [units, search]
-  );
+  useEffect(() => {
+    void fetchUnits();
+  }, [fetchUnits]);
 
   const stats = useMemo(() => {
     const active = units.filter((u) => u.status === "active").length;
     const inactive = units.length - active;
-    const latest = units.length > 0 ? units[units.length - 1].name : "N/A";
-    return { total: units.length, active, inactive, latest };
-  }, [units]);
+    const latest = units.length > 0 ? units[units.length - 1].name : "—";
+    return { total: meta.total, active, inactive, latest };
+  }, [units, meta.total]);
 
   const openAdd = () => {
     setEditing(null);
@@ -134,7 +158,7 @@ export default function UnitsPage() {
         });
       }
       setModalOpen(false);
-      fetchUnits();
+      void fetchUnits();
       toast.success(editing ? "Unit updated" : "Unit created");
     } catch (err: any) {
       toast.error(err.message || "Something went wrong");
@@ -147,7 +171,8 @@ export default function UnitsPage() {
     if (!confirm("Are you sure you want to delete this unit?")) return;
     try {
       await apiFetch(`/units/${id}`, { method: "DELETE" });
-      fetchUnits();
+      if (units.length <= 1 && page > 1) setPage((p) => Math.max(1, p - 1));
+      else void fetchUnits();
       toast.success("Unit deleted");
     } catch (err: any) {
       toast.error(err.message || "Delete failed");
@@ -161,8 +186,14 @@ export default function UnitsPage() {
       className: "w-12",
       render: (_: Unit, i: number) => i + 1,
     },
-    { key: "name", label: "Name" },
-    { key: "shortName", label: "Short Name" },
+    {
+      key: "name",
+      label: "Name",
+      render: (item: Unit) => (
+        <span className="font-semibold text-foreground">{item.name}</span>
+      ),
+    },
+    { key: "shortName", label: "Short" },
     {
       key: "status",
       label: "Status",
@@ -172,48 +203,99 @@ export default function UnitsPage() {
       key: "actions",
       label: "Actions",
       render: (item: Unit) => (
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => openEdit(item)}>
-            <Pencil size={14} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleDelete(item.id)}
+        <TableRowActions>
+          <TableRowActionButton title="Edit" onClick={() => openEdit(item)}>
+            <Pencil className={tableActionIconClassName} aria-hidden />
+          </TableRowActionButton>
+          <TableRowActionButton
+            variant="danger"
+            title="Delete"
+            onClick={() => void handleDelete(item.id)}
           >
-            <Trash2 size={14} className="text-red-500" />
-          </Button>
-        </div>
+            <Trash2 className={tableActionIconClassName} aria-hidden />
+          </TableRowActionButton>
+        </TableRowActions>
       ),
     },
   ];
 
   return (
-    <div className="p-4 md:p-6">
-      <PageHeader
-        title="Unit Management"
-        description="Manage measurement units"
-        action={
-          <Button onClick={openAdd}>
-            <Plus size={16} className="mr-2" /> Add Unit
-          </Button>
-        }
-      />
+    <div className="w-full min-w-0 space-y-5 pb-8 pt-1 sm:space-y-6 sm:pb-10 sm:pt-2">
+      <InventoryListPageHeader
+        icon={Ruler}
+        title="Units"
+        description="Measurement units — paginated, API search."
+      >
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+          onClick={() => router.back()}
+        >
+          Back
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+          onClick={() => void fetchUnits()}
+        >
+          <RotateCcw className="h-4 w-4 shrink-0" aria-hidden />
+          Refresh
+        </Button>
+        <Button
+          type="button"
+          className="h-10 w-full gap-2 rounded-xl shadow-sm sm:h-9 sm:w-auto"
+          onClick={openAdd}
+        >
+          <Plus className="h-4 w-4 shrink-0" aria-hidden />
+          Add unit
+        </Button>
+      </InventoryListPageHeader>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Units" value={stats.total} icon={Ruler} />
-        <StatCard title="Active" value={stats.active} icon={CheckCircle} />
-        <StatCard title="Inactive" value={stats.inactive} icon={XCircle} />
-        <StatCard title="Latest Unit" value={stats.latest} icon={Star} />
+      <div className="space-y-5 sm:space-y-6">
+        <section className={`${INVENTORY_CARD_SHELL} p-5 sm:p-6 md:p-7`}>
+          <InventorySectionHeader
+            icon={LayoutGrid}
+            title="Overview"
+            description="Total is server-wide. Active / inactive / latest are for the current page."
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard title="Total units" value={stats.total} icon={Ruler} />
+            <StatCard title="Active (page)" value={stats.active} icon={CheckCircle} />
+            <StatCard title="Inactive (page)" value={stats.inactive} icon={XCircle} />
+            <StatCard title="Latest (page)" value={stats.latest} icon={Star} />
+          </div>
+        </section>
+
+        <section className={INVENTORY_CARD_SHELL}>
+          <div className="border-b border-border/50 bg-muted/15 px-5 py-4 sm:px-6 sm:py-5">
+            <InventorySectionHeader
+              compact
+              icon={Ruler}
+              title="Unit list"
+              description={`${PAGE_SIZE} per page · search uses the API.`}
+            />
+          </div>
+          <div className="space-y-4 p-5 sm:p-6 md:p-7">
+            <FilterBar
+              searchValue={searchInput}
+              onSearchChange={setSearchInput}
+              searchPlaceholder="Search units…"
+            />
+            <DataTable columns={columns} data={units} loading={loading} inventoryStyle />
+            <InventoryTablePagination
+              page={page}
+              lastPage={meta.lastPage}
+              total={meta.total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+          </div>
+        </section>
       </div>
-
-      <FilterBar
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search units..."
-      />
-
-      <DataTable columns={columns} data={filtered} loading={loading} />
 
       <Modal
         open={modalOpen}
@@ -242,19 +324,8 @@ export default function UnitsPage() {
             />
           </div>
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Status</label>
-            <button
-              type="button"
-              onClick={() => setFormStatus(!formStatus)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formStatus ? "bg-orange-500" : "bg-gray-300"}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formStatus ? "translate-x-6" : "translate-x-1"}`}
-              />
-            </button>
-            <span className="ml-2 text-sm">
-              {formStatus ? "Active" : "Inactive"}
-            </span>
+            <label className="mb-2 block text-sm font-medium">Status</label>
+            <InventoryStatusSwitch checked={formStatus} onCheckedChange={setFormStatus} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>

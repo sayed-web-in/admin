@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Tags,
   CheckCircle,
@@ -10,15 +11,35 @@ import {
   Trash2,
   Plus,
   ImageIcon,
+  RotateCcw,
+  LayoutGrid,
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch, apiUpload } from "@/lib/api";
-import { PageHeader } from "@/components/common/PageHeader";
+import {
+  extractApiList,
+  extractBranches,
+  unwrapPaginated,
+} from "@/lib/apiList";
+import { InventoryTablePagination } from "@/components/inventory/InventoryTablePagination";
+import { resolveMediaUrl } from "@/app/(dashboard)/inventory/add-product/media";
 import { StatCard } from "@/components/common/StatCard";
 import { FilterBar } from "@/components/common/FilterBar";
 import { DataTable } from "@/components/common/DataTable";
+import {
+  TableRowActions,
+  TableRowActionButton,
+  tableActionIconClassName,
+} from "@/components/common/TableRowActions";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Modal } from "@/components/common/Modal";
+import {
+  INVENTORY_CARD_SHELL,
+  InventoryListPageHeader,
+  InventorySectionHeader,
+  InventoryStatusSwitch,
+  inventoryCheckboxClass,
+} from "@/components/inventory/InventoryCrudLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -66,11 +87,17 @@ function normalizeBrand(raw: {
   };
 }
 
+const PAGE_SIZE = 20;
+
 export default function BrandsPage() {
+  const router = useRouter();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ total: 0, lastPage: 1 });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Brand | null>(null);
 
@@ -82,56 +109,64 @@ export default function BrandsPage() {
   const [formImagePreview, setFormImagePreview] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
-  const fetchBrands = async () => {
+  const fetchBrands = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch<
-        | { data: Parameters<typeof normalizeBrand>[0][]; total?: number }
-        | { brands: Brand[] }
-      >("/brands?limit=500");
-      const list = Array.isArray(res)
-        ? res
-        : "data" in res && Array.isArray(res.data)
-          ? res.data
-          : "brands" in res
-            ? res.brands
-            : [];
-      setBrands(list.map((b) => normalizeBrand(b)));
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("limit", String(PAGE_SIZE));
+      if (searchQuery) params.set("search", searchQuery);
+      const res = await apiFetch<unknown>(`/brands?${params.toString()}`);
+      const paginated = unwrapPaginated<Parameters<typeof normalizeBrand>[0]>(res);
+      if (paginated) {
+        setBrands(paginated.data.map((b) => normalizeBrand(b)));
+        setMeta({ total: paginated.total, lastPage: paginated.lastPage });
+      } else {
+        const list = extractApiList<Parameters<typeof normalizeBrand>[0]>(res, [
+          "brands",
+        ]);
+        setBrands(list.map((b) => normalizeBrand(b)));
+        setMeta({ total: list.length, lastPage: 1 });
+      }
     } catch {
       setBrands([]);
+      setMeta({ total: 0, lastPage: 1 });
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, searchQuery]);
 
   const fetchBranches = async () => {
     try {
-      const data = await apiFetch<Branch[] | { branches: Branch[] }>("/branches");
-      setBranches(Array.isArray(data) ? data : data.branches ?? []);
+      const data = await apiFetch<unknown>("/branches");
+      setBranches(extractBranches(data));
     } catch {
       setBranches([]);
     }
   };
 
   useEffect(() => {
-    fetchBrands();
-    fetchBranches();
-  }, []);
+    const t = setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  const filtered = useMemo(
-    () =>
-      brands.filter((b) =>
-        b.name.toLowerCase().includes(search.toLowerCase())
-      ),
-    [brands, search]
-  );
+  useEffect(() => {
+    void fetchBrands();
+  }, [fetchBrands]);
+
+  useEffect(() => {
+    void fetchBranches();
+  }, []);
 
   const stats = useMemo(() => {
     const active = brands.filter((b) => b.status === "active").length;
     const inactive = brands.length - active;
-    const latest = brands.length > 0 ? brands[brands.length - 1].name : "N/A";
-    return { total: brands.length, active, inactive, latest };
-  }, [brands]);
+    const latest = brands.length > 0 ? brands[brands.length - 1].name : "—";
+    return { total: meta.total, active, inactive, latest };
+  }, [brands, meta.total]);
 
   const openAdd = () => {
     setEditing(null);
@@ -191,7 +226,7 @@ export default function BrandsPage() {
 
       if (editing) {
         await apiFetch(`/brands/${editing.id}`, {
-          method: "PUT",
+          method: "PATCH",
           body: JSON.stringify(payload),
         });
       } else {
@@ -201,7 +236,7 @@ export default function BrandsPage() {
         });
       }
       setModalOpen(false);
-      fetchBrands();
+      await fetchBrands();
       toast.success(editing ? "Brand updated" : "Brand created");
     } catch (err: any) {
       toast.error(err.message || "Something went wrong");
@@ -214,7 +249,8 @@ export default function BrandsPage() {
     if (!confirm("Are you sure you want to delete this brand?")) return;
     try {
       await apiFetch(`/brands/${id}`, { method: "DELETE" });
-      fetchBrands();
+      if (brands.length <= 1 && page > 1) setPage((p) => Math.max(1, p - 1));
+      else void fetchBrands();
       toast.success("Brand deleted");
     } catch (err: any) {
       toast.error(err.message || "Delete failed");
@@ -230,22 +266,31 @@ export default function BrandsPage() {
     },
     {
       key: "image",
-      label: "Image",
-      className: "w-16",
-      render: (item: Brand) =>
-        item.image ? (
+      label: "Img",
+      className: "w-[4.75rem]",
+      render: (item: Brand) => {
+        const src = item.image ? resolveMediaUrl(item.image) : "";
+        return src ? (
           <img
-            src={item.image}
-            alt={item.name}
-            className="w-10 h-10 rounded-lg object-cover"
+            src={src}
+            alt=""
+            className="h-12 w-12 rounded-xl border border-border/70 object-cover"
+            loading="lazy"
           />
         ) : (
-          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-            <ImageIcon size={16} className="text-muted-foreground" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border/60 bg-muted/30 text-muted-foreground">
+            <ImageIcon className="h-5 w-5" aria-hidden />
           </div>
-        ),
+        );
+      },
     },
-    { key: "name", label: "Name" },
+    {
+      key: "name",
+      label: "Name",
+      render: (item: Brand) => (
+        <span className="font-semibold text-foreground">{item.name}</span>
+      ),
+    },
     {
       key: "description",
       label: "Description",
@@ -264,48 +309,104 @@ export default function BrandsPage() {
       key: "actions",
       label: "Actions",
       render: (item: Brand) => (
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => openEdit(item)}>
-            <Pencil size={14} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
+        <TableRowActions>
+          <TableRowActionButton title="Edit" onClick={() => openEdit(item)}>
+            <Pencil className={tableActionIconClassName} aria-hidden />
+          </TableRowActionButton>
+          <TableRowActionButton
+            variant="danger"
+            title="Delete"
             onClick={() => handleDelete(item.id)}
           >
-            <Trash2 size={14} className="text-red-500" />
-          </Button>
-        </div>
+            <Trash2 className={tableActionIconClassName} aria-hidden />
+          </TableRowActionButton>
+        </TableRowActions>
       ),
     },
   ];
 
   return (
-    <div className="p-4 md:p-6">
-      <PageHeader
-        title="Brand Management"
-        description="Manage your product brands"
-        action={
-          <Button onClick={openAdd}>
-            <Plus size={16} className="mr-2" /> Add Brand
-          </Button>
-        }
-      />
+    <div className="w-full min-w-0 space-y-5 pb-8 pt-1 sm:space-y-6 sm:pb-10 sm:pt-2">
+      <InventoryListPageHeader
+        icon={Tags}
+        title="Brands"
+        description="Create and assign brands to branches — shared layout with other inventory settings."
+      >
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+          onClick={() => router.back()}
+        >
+          Back
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+          onClick={() => void fetchBrands()}
+        >
+          <RotateCcw className="h-4 w-4 shrink-0" aria-hidden />
+          Refresh
+        </Button>
+        <Button
+          type="button"
+          className="h-10 w-full gap-2 rounded-xl shadow-sm sm:h-9 sm:w-auto"
+          onClick={openAdd}
+        >
+          <Plus className="h-4 w-4 shrink-0" aria-hidden />
+          Add brand
+        </Button>
+      </InventoryListPageHeader>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Brands" value={stats.total} icon={Tags} />
-        <StatCard title="Active" value={stats.active} icon={CheckCircle} />
-        <StatCard title="Inactive" value={stats.inactive} icon={XCircle} />
-        <StatCard title="Latest Brand" value={stats.latest} icon={Star} />
+      <div className="space-y-5 sm:space-y-6">
+        <section className={`${INVENTORY_CARD_SHELL} p-5 sm:p-6 md:p-7`}>
+          <InventorySectionHeader
+            icon={LayoutGrid}
+            title="Overview"
+            description="Total is server-wide. Active / inactive / latest are for the current page only."
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard title="Total brands" value={stats.total} icon={Tags} />
+            <StatCard title="Active" value={stats.active} icon={CheckCircle} />
+            <StatCard title="Inactive" value={stats.inactive} icon={XCircle} />
+            <StatCard title="Latest" value={stats.latest} icon={Star} />
+          </div>
+        </section>
+
+        <section className={INVENTORY_CARD_SHELL}>
+          <div className="border-b border-border/50 bg-muted/15 px-5 py-4 sm:px-6 sm:py-5">
+            <InventorySectionHeader
+              compact
+              icon={Tags}
+              title="Brand list"
+              description={`Paginated (${PAGE_SIZE} per page). Search is sent to the API.`}
+            />
+          </div>
+          <div className="space-y-4 p-5 sm:p-6 md:p-7">
+            <FilterBar
+              searchValue={searchInput}
+              onSearchChange={setSearchInput}
+              searchPlaceholder="Search brands…"
+            />
+            <DataTable
+              columns={columns}
+              data={brands}
+              loading={loading}
+              inventoryStyle
+            />
+            <InventoryTablePagination
+              page={page}
+              lastPage={meta.lastPage}
+              total={meta.total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+          </div>
+        </section>
       </div>
-
-      <FilterBar
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search brands..."
-      />
-
-      <DataTable columns={columns} data={filtered} loading={loading} />
 
       <Modal
         open={modalOpen}
@@ -320,7 +421,7 @@ export default function BrandsPage() {
               <img
                 src={formImagePreview}
                 alt="Preview"
-                className="w-20 h-20 rounded-lg object-cover mb-2"
+                className="mb-2 h-20 w-20 rounded-lg object-cover"
               />
             )}
             <Input type="file" accept="image/*" onChange={handleImageChange} />
@@ -336,11 +437,9 @@ export default function BrandsPage() {
             />
           </div>
           <div>
-            <label className="text-sm font-medium mb-1.5 block">
-              Description
-            </label>
+            <label className="text-sm font-medium mb-1.5 block">Description</label>
             <textarea
-              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[80px]"
+              className="flex min-h-[80px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={formDesc}
               onChange={(e) => setFormDesc(e.target.value)}
               placeholder="Brand description"
@@ -348,20 +447,18 @@ export default function BrandsPage() {
           </div>
           {branches.length > 0 && (
             <div>
-              <label className="text-sm font-medium mb-1.5 block">
-                Branches
-              </label>
+              <label className="text-sm font-medium mb-1.5 block">Branches</label>
               <div className="flex flex-wrap gap-2">
                 {branches.map((b) => (
                   <label
                     key={b.id}
-                    className="flex items-center gap-1.5 text-sm cursor-pointer"
+                    className="flex cursor-pointer items-center gap-1.5 text-sm"
                   >
                     <input
                       type="checkbox"
                       checked={formBranches.includes(b.id)}
                       onChange={() => toggleBranch(b.id)}
-                      className="accent-orange-500"
+                      className={inventoryCheckboxClass}
                     />
                     {b.name}
                   </label>
@@ -370,25 +467,11 @@ export default function BrandsPage() {
             </div>
           )}
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Status</label>
-            <button
-              type="button"
-              onClick={() => setFormStatus(!formStatus)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formStatus ? "bg-orange-500" : "bg-gray-300"}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formStatus ? "translate-x-6" : "translate-x-1"}`}
-              />
-            </button>
-            <span className="ml-2 text-sm">
-              {formStatus ? "Active" : "Inactive"}
-            </span>
+            <label className="mb-2 block text-sm font-medium">Status</label>
+            <InventoryStatusSwitch checked={formStatus} onCheckedChange={setFormStatus} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => setModalOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={saving || !formName.trim()}>

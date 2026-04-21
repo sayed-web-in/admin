@@ -1,12 +1,26 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { Palette, Pencil, Trash2, Plus, X } from "lucide-react";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { Palette, Pencil, Trash2, Plus, X, RotateCcw, LayoutGrid } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
-import { PageHeader } from "@/components/common/PageHeader";
+import { unwrapPaginated, extractApiList } from "@/lib/apiList";
+import { StatCard } from "@/components/common/StatCard";
 import { FilterBar } from "@/components/common/FilterBar";
 import { DataTable } from "@/components/common/DataTable";
+import {
+  TableRowActions,
+  TableRowActionButton,
+  tableActionIconClassName,
+} from "@/components/common/TableRowActions";
+import {
+  INVENTORY_CARD_SHELL,
+  InventoryListPageHeader,
+  InventorySectionHeader,
+  InventoryStatusSwitch,
+} from "@/components/inventory/InventoryCrudLayout";
+import { InventoryTablePagination } from "@/components/inventory/InventoryTablePagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
@@ -39,10 +53,16 @@ function normalizeAttribute(raw: {
   };
 }
 
+const PAGE_SIZE = 20;
+
 export default function VariantsPage() {
+  const router = useRouter();
   const [attributes, setAttributes] = useState<Attribute[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ total: 0, lastPage: 1 });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Attribute | null>(null);
 
@@ -51,39 +71,50 @@ export default function VariantsPage() {
   const [formValues, setFormValues] = useState<string[]>([""]);
   const [saving, setSaving] = useState(false);
 
-  const fetchAttributes = async () => {
+  const fetchAttributes = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch<
-        | { data: Parameters<typeof normalizeAttribute>[0][]; total?: number }
-        | { attributes: Attribute[] }
-      >("/attributes?limit=500");
-      const list = Array.isArray(res)
-        ? res
-        : "data" in res && Array.isArray(res.data)
-          ? res.data
-          : "attributes" in res
-            ? res.attributes
-            : [];
-      setAttributes(list.map((a) => normalizeAttribute(a)));
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("limit", String(PAGE_SIZE));
+      if (searchQuery) params.set("search", searchQuery);
+      const res = await apiFetch<unknown>(`/attributes?${params.toString()}`);
+      const paginated = unwrapPaginated<Parameters<typeof normalizeAttribute>[0]>(res);
+      if (paginated) {
+        setAttributes(paginated.data.map((a) => normalizeAttribute(a)));
+        setMeta({ total: paginated.total, lastPage: paginated.lastPage });
+      } else {
+        const list = extractApiList<Parameters<typeof normalizeAttribute>[0]>(res, [
+          "attributes",
+        ]);
+        setAttributes(list.map((a) => normalizeAttribute(a)));
+        setMeta({ total: list.length, lastPage: 1 });
+      }
     } catch {
       setAttributes([]);
+      setMeta({ total: 0, lastPage: 1 });
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, searchQuery]);
 
   useEffect(() => {
-    fetchAttributes();
-  }, []);
+    const t = setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  const filtered = useMemo(
-    () =>
-      attributes.filter((a) =>
-        a.name.toLowerCase().includes(search.toLowerCase())
-      ),
-    [attributes, search]
-  );
+  useEffect(() => {
+    void fetchAttributes();
+  }, [fetchAttributes]);
+
+  const stats = useMemo(() => {
+    const active = attributes.filter((a) => a.status === "active").length;
+    const valueCount = attributes.reduce((s, a) => s + a.values.length, 0);
+    return { total: meta.total, active, valueCount };
+  }, [attributes, meta.total]);
 
   const openAdd = () => {
     setEditing(null);
@@ -137,7 +168,7 @@ export default function VariantsPage() {
         });
       }
       setModalOpen(false);
-      fetchAttributes();
+      void fetchAttributes();
       toast.success(editing ? "Attribute updated" : "Attribute created");
     } catch (err: any) {
       toast.error(err.message || "Something went wrong");
@@ -150,7 +181,8 @@ export default function VariantsPage() {
     if (!confirm("Are you sure you want to delete this attribute?")) return;
     try {
       await apiFetch(`/attributes/${id}`, { method: "DELETE" });
-      fetchAttributes();
+      if (attributes.length <= 1 && page > 1) setPage((p) => Math.max(1, p - 1));
+      else void fetchAttributes();
       toast.success("Attribute deleted");
     } catch (err: any) {
       toast.error(err.message || "Delete failed");
@@ -164,14 +196,20 @@ export default function VariantsPage() {
       className: "w-12",
       render: (_: Attribute, i: number) => i + 1,
     },
-    { key: "name", label: "Attribute Name" },
+    {
+      key: "name",
+      label: "Attribute",
+      render: (item: Attribute) => (
+        <span className="font-semibold text-foreground">{item.name}</span>
+      ),
+    },
     {
       key: "values",
       label: "Values",
       render: (item: Attribute) => (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex max-w-[320px] flex-wrap gap-1">
           {item.values.map((v, i) => (
-            <Badge key={i} variant="secondary">
+            <Badge key={i} variant="secondary" className="font-normal">
               {v.value}
             </Badge>
           ))}
@@ -187,41 +225,103 @@ export default function VariantsPage() {
       key: "actions",
       label: "Actions",
       render: (item: Attribute) => (
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => openEdit(item)}>
-            <Pencil size={14} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleDelete(item.id)}
+        <TableRowActions>
+          <TableRowActionButton title="Edit" onClick={() => openEdit(item)}>
+            <Pencil className={tableActionIconClassName} aria-hidden />
+          </TableRowActionButton>
+          <TableRowActionButton
+            variant="danger"
+            title="Delete"
+            onClick={() => void handleDelete(item.id)}
           >
-            <Trash2 size={14} className="text-red-500" />
-          </Button>
-        </div>
+            <Trash2 className={tableActionIconClassName} aria-hidden />
+          </TableRowActionButton>
+        </TableRowActions>
       ),
     },
   ];
 
   return (
-    <div className="p-4 md:p-6">
-      <PageHeader
-        title="Variants & Attributes"
-        description="Manage product attributes and their values"
-        action={
-          <Button onClick={openAdd}>
-            <Plus size={16} className="mr-2" /> Add Attribute
-          </Button>
-        }
-      />
+    <div className="w-full min-w-0 space-y-5 pb-8 pt-1 sm:space-y-6 sm:pb-10 sm:pt-2">
+      <InventoryListPageHeader
+        icon={Palette}
+        title="Variants & attributes"
+        description="Product attributes (e.g. Color, Size) and values — paginated API."
+      >
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+          onClick={() => router.back()}
+        >
+          Back
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+          onClick={() => void fetchAttributes()}
+        >
+          <RotateCcw className="h-4 w-4 shrink-0" aria-hidden />
+          Refresh
+        </Button>
+        <Button
+          type="button"
+          className="h-10 w-full gap-2 rounded-xl shadow-sm sm:h-9 sm:w-auto"
+          onClick={openAdd}
+        >
+          <Plus className="h-4 w-4 shrink-0" aria-hidden />
+          Add attribute
+        </Button>
+      </InventoryListPageHeader>
 
-      <FilterBar
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search attributes..."
-      />
+      <div className="space-y-5 sm:space-y-6">
+        <section className={`${INVENTORY_CARD_SHELL} p-5 sm:p-6 md:p-7`}>
+          <InventorySectionHeader
+            icon={LayoutGrid}
+            title="Overview"
+            description="Total attributes is server-wide. Active and value count are for the current page."
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <StatCard title="Total attributes" value={stats.total} icon={Palette} />
+            <StatCard title="Active (page)" value={stats.active} icon={Palette} />
+            <StatCard title="Values (page)" value={stats.valueCount} icon={Palette} />
+          </div>
+        </section>
 
-      <DataTable columns={columns} data={filtered} loading={loading} />
+        <section className={INVENTORY_CARD_SHELL}>
+          <div className="border-b border-border/50 bg-muted/15 px-5 py-4 sm:px-6 sm:py-5">
+            <InventorySectionHeader
+              compact
+              icon={Palette}
+              title="Attribute list"
+              description={`${PAGE_SIZE} per page · search uses the API.`}
+            />
+          </div>
+          <div className="space-y-4 p-5 sm:p-6 md:p-7">
+            <FilterBar
+              searchValue={searchInput}
+              onSearchChange={setSearchInput}
+              searchPlaceholder="Search attributes…"
+            />
+            <DataTable
+              columns={columns}
+              data={attributes}
+              loading={loading}
+              inventoryStyle
+            />
+            <InventoryTablePagination
+              page={page}
+              lastPage={meta.lastPage}
+              total={meta.total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+          </div>
+        </section>
+      </div>
 
       <Modal
         open={modalOpen}
@@ -262,30 +362,14 @@ export default function VariantsPage() {
                   )}
                 </div>
               ))}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={addValueField}
-                className="mt-1"
-              >
-                <Plus size={14} className="mr-1" /> Add Value
+              <Button variant="outline" size="sm" onClick={addValueField} className="mt-1">
+                <Plus size={14} className="mr-1" /> Add value
               </Button>
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Status</label>
-            <button
-              type="button"
-              onClick={() => setFormStatus(!formStatus)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formStatus ? "bg-orange-500" : "bg-gray-300"}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formStatus ? "translate-x-6" : "translate-x-1"}`}
-              />
-            </button>
-            <span className="ml-2 text-sm">
-              {formStatus ? "Active" : "Inactive"}
-            </span>
+            <label className="mb-2 block text-sm font-medium">Status</label>
+            <InventoryStatusSwitch checked={formStatus} onCheckedChange={setFormStatus} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>

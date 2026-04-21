@@ -1,5 +1,6 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Wrench,
   CheckCircle,
@@ -7,17 +8,28 @@ import {
   Plus,
   Pencil,
   Trash2,
+  RotateCcw,
+  LayoutGrid,
+  Layers,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
-import { PageHeader } from "@/components/common/PageHeader";
+import { unwrapPaginated } from "@/lib/apiList";
+import {
+  INVENTORY_CARD_SHELL,
+  InventoryListPageHeader,
+  InventorySectionHeader,
+} from "@/components/inventory/InventoryCrudLayout";
 import { StatCard } from "@/components/common/StatCard";
 import { FilterBar } from "@/components/common/FilterBar";
 import { DataTable } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { InventoryTablePagination } from "@/components/inventory/InventoryTablePagination";
 import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+const PAGE_SIZE = 20;
 
 interface Service {
   id: number;
@@ -27,10 +39,31 @@ interface Service {
   status: string;
 }
 
+function normalizeService(row: {
+  id: number;
+  name: string;
+  price: unknown;
+  description?: string | null;
+  isActive: boolean;
+}): Service {
+  return {
+    id: row.id,
+    name: row.name,
+    price: Number(row.price),
+    description: row.description ?? undefined,
+    status: row.isActive ? "active" : "inactive",
+  };
+}
+
 export default function ServicesPage() {
+  const router = useRouter();
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ page: 1, lastPage: 1, total: 0 });
+  const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0 });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Service | null>(null);
   const [name, setName] = useState("");
@@ -39,32 +72,73 @@ export default function ServicesPage() {
   const [status, setStatus] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const fetchServices = async () => {
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
+  const loadStats = useCallback(async () => {
+    const common = debouncedSearch ? `&search=${encodeURIComponent(debouncedSearch)}` : "";
+    try {
+      const [allRes, activeRes, inactiveRes] = await Promise.all([
+        apiFetch<unknown>(`/services?page=1&limit=1${common}`),
+        apiFetch<unknown>(`/services?page=1&limit=1&isActive=true${common}`),
+        apiFetch<unknown>(`/services?page=1&limit=1&isActive=false${common}`),
+      ]);
+      const all = unwrapPaginated(allRes);
+      const act = unwrapPaginated(activeRes);
+      const inact = unwrapPaginated(inactiveRes);
+      setStats({
+        total: all?.total ?? 0,
+        active: act?.total ?? 0,
+        inactive: inact?.total ?? 0,
+      });
+    } catch {
+      setStats({ total: 0, active: 0, inactive: 0 });
+    }
+  }, [debouncedSearch]);
+
+  const fetchServices = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch<any>("/services?limit=100");
-      setServices(res.data || (Array.isArray(res) ? res : res.services || []));
+      const qs = new URLSearchParams({
+        page: String(page),
+        limit: String(PAGE_SIZE),
+      });
+      if (debouncedSearch) qs.set("search", debouncedSearch);
+      const res = await apiFetch<unknown>(`/services?${qs}`);
+      const p = unwrapPaginated<Parameters<typeof normalizeService>[0]>(res);
+      if (p) {
+        setServices(p.data.map(normalizeService));
+        setMeta({ page: p.page, lastPage: p.lastPage, total: p.total });
+        if (p.page > p.lastPage) setPage(p.lastPage);
+      } else {
+        setServices([]);
+        setMeta({ page: 1, lastPage: 1, total: 0 });
+      }
     } catch {
       setServices([]);
+      setMeta({ page: 1, lastPage: 1, total: 0 });
     } finally {
       setLoading(false);
     }
-  };
+  }, [debouncedSearch, page]);
 
   useEffect(() => {
-    fetchServices();
-  }, []);
+    void loadStats();
+  }, [loadStats]);
 
-  const filtered = useMemo(
-    () => services.filter((s) => s.name.toLowerCase().includes(search.toLowerCase())),
-    [services, search]
-  );
+  useEffect(() => {
+    void fetchServices();
+  }, [fetchServices]);
 
-  const stats = useMemo(() => {
-    const active = services.filter((s) => s.status === "active").length;
-    const inactive = services.length - active;
-    return { total: services.length, active, inactive };
-  }, [services]);
+  const refresh = () => {
+    void Promise.all([fetchServices(), loadStats()]);
+  };
 
   const openAdd = () => {
     setEditing(null);
@@ -92,11 +166,11 @@ export default function ServicesPage() {
         name,
         price: Number(price),
         description,
-        status: status ? "active" : "inactive",
+        isActive: status,
       };
       if (editing) {
         await apiFetch(`/services/${editing.id}`, {
-          method: "PUT",
+          method: "PATCH",
           body: JSON.stringify(payload),
         });
       } else {
@@ -106,9 +180,9 @@ export default function ServicesPage() {
         });
       }
       setModalOpen(false);
-      fetchServices();
-    } catch (err: any) {
-      alert(err.message);
+      await Promise.all([fetchServices(), loadStats()]);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -118,14 +192,19 @@ export default function ServicesPage() {
     if (!confirm("Are you sure you want to delete this service?")) return;
     try {
       await apiFetch(`/services/${id}`, { method: "DELETE" });
-      fetchServices();
-    } catch (err: any) {
-      alert(err.message);
+      await Promise.all([fetchServices(), loadStats()]);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Delete failed");
     }
   };
 
   const columns = [
-    { key: "index", label: "#", className: "w-12", render: (_: Service, i: number) => i + 1 },
+    {
+      key: "index",
+      label: "#",
+      className: "w-12",
+      render: (_: Service, i: number) => (page - 1) * PAGE_SIZE + i + 1,
+    },
     { key: "name", label: "Name" },
     {
       key: "price",
@@ -136,7 +215,9 @@ export default function ServicesPage() {
       key: "description",
       label: "Description",
       render: (item: Service) => (
-        <span className="text-muted-foreground line-clamp-1">{item.description || "—"}</span>
+        <span className="line-clamp-1 text-muted-foreground">
+          {item.description || "—"}
+        </span>
       ),
     },
     {
@@ -148,7 +229,7 @@ export default function ServicesPage() {
       key: "actions",
       label: "Actions",
       render: (item: Service) => (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center justify-end gap-1">
           <Button variant="ghost" size="sm" onClick={() => openEdit(item)}>
             <Pencil size={14} />
           </Button>
@@ -161,30 +242,81 @@ export default function ServicesPage() {
   ];
 
   return (
-    <div className="p-4 md:p-6">
-      <PageHeader
+    <div className="w-full min-w-0 space-y-5 pb-8 pt-1 sm:space-y-6 sm:pb-10 sm:pt-2">
+      <InventoryListPageHeader
+        icon={Wrench}
         title="Services"
-        description="Manage service offerings"
-        action={
-          <Button onClick={openAdd}>
-            <Plus size={16} className="mr-2" /> Add Service
-          </Button>
-        }
-      />
+        description="Sell add-on services at POS — same chrome as inventory settings lists."
+      >
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+          onClick={() => router.back()}
+        >
+          Back
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+          onClick={refresh}
+        >
+          <RotateCcw className="h-4 w-4 shrink-0" aria-hidden />
+          Refresh
+        </Button>
+        <Button
+          type="button"
+          className="h-10 w-full gap-2 rounded-xl shadow-sm sm:h-9 sm:w-auto"
+          onClick={openAdd}
+        >
+          <Plus className="h-4 w-4 shrink-0" aria-hidden />
+          Add service
+        </Button>
+      </InventoryListPageHeader>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <StatCard title="Total Services" value={stats.total} icon={Wrench} />
-        <StatCard title="Active" value={stats.active} icon={CheckCircle} />
-        <StatCard title="Inactive" value={stats.inactive} icon={XCircle} />
+      <div className="space-y-5 sm:space-y-6">
+        <section className={`${INVENTORY_CARD_SHELL} p-5 sm:p-6 md:p-7`}>
+          <InventorySectionHeader
+            icon={LayoutGrid}
+            title="Overview"
+            description="Totals follow the search box (active / inactive counts use the same query)."
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <StatCard title="Total Services" value={stats.total} icon={Wrench} />
+            <StatCard title="Active" value={stats.active} icon={CheckCircle} />
+            <StatCard title="Inactive" value={stats.inactive} icon={XCircle} />
+          </div>
+        </section>
+
+        <section className={INVENTORY_CARD_SHELL}>
+          <div className="flex flex-col gap-4 border-b border-border/50 bg-muted/15 px-5 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6 sm:py-5">
+            <InventorySectionHeader
+              compact
+              icon={Layers}
+              title="Service list"
+              description={`Paginated (${PAGE_SIZE} per page). Search is sent to the API.`}
+            />
+          </div>
+          <div className="space-y-4 p-5 sm:p-6 md:p-7">
+            <FilterBar
+              searchValue={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search services…"
+            />
+            <DataTable columns={columns} data={services} loading={loading} inventoryStyle />
+            <InventoryTablePagination
+              page={meta.page}
+              lastPage={meta.lastPage}
+              total={meta.total}
+              loading={loading}
+              onPageChange={setPage}
+            />
+          </div>
+        </section>
       </div>
-
-      <FilterBar
-        searchValue={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search services..."
-      />
-
-      <DataTable columns={columns} data={filtered} loading={loading} />
 
       <Modal
         open={modalOpen}
@@ -193,7 +325,7 @@ export default function ServicesPage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium mb-1.5 block">
+            <label className="mb-1.5 block text-sm font-medium">
               Name <span className="text-red-500">*</span>
             </label>
             <Input
@@ -203,7 +335,7 @@ export default function ServicesPage() {
             />
           </div>
           <div>
-            <label className="text-sm font-medium mb-1.5 block">
+            <label className="mb-1.5 block text-sm font-medium">
               Price <span className="text-red-500">*</span>
             </label>
             <Input
@@ -214,16 +346,16 @@ export default function ServicesPage() {
             />
           </div>
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Description</label>
+            <label className="mb-1.5 block text-sm font-medium">Description</label>
             <textarea
-              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[80px]"
+              className="flex min-h-[80px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Service description"
             />
           </div>
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Status</label>
+            <label className="mb-1.5 block text-sm font-medium">Status</label>
             <button
               type="button"
               onClick={() => setStatus(!status)}
