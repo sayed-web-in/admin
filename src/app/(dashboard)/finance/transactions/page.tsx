@@ -1,101 +1,163 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ArrowUpCircle, ArrowDownCircle, Scale, Plus } from "lucide-react";
-import { PageHeader } from "@/components/common/PageHeader";
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import {
+  ArrowUpCircle,
+  ArrowDownCircle,
+  Scale,
+  Plus,
+  RotateCcw,
+  LayoutGrid,
+  Layers,
+} from "lucide-react";
+import { apiFetch } from "@/lib/api";
+import { unwrapPaginated } from "@/lib/apiList";
+import { formatPrice, formatDate } from "@/lib/utils";
+import { getSelectedBranch } from "@/lib/auth";
+import {
+  INVENTORY_CARD_SHELL,
+  InventoryListPageHeader,
+  InventorySectionHeader,
+} from "@/components/inventory/InventoryCrudLayout";
 import { StatCard } from "@/components/common/StatCard";
 import { FilterBar } from "@/components/common/FilterBar";
 import { DataTable } from "@/components/common/DataTable";
+import { InventoryTablePagination } from "@/components/inventory/InventoryTablePagination";
 import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { apiFetch } from "@/lib/api";
-import { formatPrice, formatDate } from "@/lib/utils";
-import { getSelectedBranch } from "@/lib/auth";
+
+const PAGE_SIZE = 20;
+type TxType = "CREDIT" | "DEBIT";
 
 interface Account {
   id: number;
   name: string;
 }
 
-interface Transaction {
+interface TransactionRow {
   id: number;
-  date: string;
-  account: Account;
+  createdAt: string;
+  account?: Account;
   accountId: number;
-  type: "Credit" | "Debit";
+  type: TxType;
   amount: number;
-  reference: string;
-  description: string;
+  reference?: string;
+  description?: string;
 }
 
 export default function TransactionsPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const router = useRouter();
+  const branchId = getSelectedBranch();
+  const [rows, setRows] = useState<TransactionRow[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterAccount, setFilterAccount] = useState("");
   const [filterType, setFilterType] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ page: 1, lastPage: 1, total: 0 });
+  const [summary, setSummary] = useState({
+    totalCredits: 0,
+    totalDebits: 0,
+    netBalance: 0,
+  });
   const [modalOpen, setModalOpen] = useState(false);
-
+  const [saving, setSaving] = useState(false);
   const [formAccountId, setFormAccountId] = useState("");
-  const [formType, setFormType] = useState<"Credit" | "Debit">("Credit");
+  const [formType, setFormType] = useState<TxType>("CREDIT");
   const [formAmount, setFormAmount] = useState("");
   const [formReference, setFormReference] = useState("");
   const [formDescription, setFormDescription] = useState("");
-  const [saving, setSaving] = useState(false);
 
-  const branchId = getSelectedBranch();
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  const fetchAccounts = async () => {
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, filterAccount, filterType, dateFrom, dateTo, branchId]);
+
+  const buildQs = useCallback(() => {
+    const q = new URLSearchParams();
+    q.set("page", String(page));
+    q.set("limit", String(PAGE_SIZE));
+    if (debouncedSearch) q.set("search", debouncedSearch);
+    if (filterAccount) q.set("accountId", filterAccount);
+    if (filterType) q.set("type", filterType);
+    if (dateFrom) q.set("dateFrom", dateFrom);
+    if (dateTo) q.set("dateTo", dateTo);
+    return q;
+  }, [page, debouncedSearch, filterAccount, filterType, dateFrom, dateTo]);
+
+  const fetchAccounts = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
-      if (branchId) params.set("branchId", String(branchId));
-      const data = await apiFetch<Account[]>(`/finance/accounts?${params}`);
-      setAccounts(data);
+      const res = await apiFetch<unknown>("/finance/accounts");
+      setAccounts(Array.isArray(res) ? (res as Account[]) : []);
     } catch {
       setAccounts([]);
     }
-  };
+  }, []);
 
-  const fetchData = async () => {
+  const fetchRows = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (branchId) params.set("branchId", String(branchId));
-      if (filterAccount) params.set("accountId", filterAccount);
-      if (filterType) params.set("type", filterType);
-      if (dateFrom) params.set("dateFrom", dateFrom);
-      if (dateTo) params.set("dateTo", dateTo);
-      const data = await apiFetch<Transaction[]>(`/finance/transactions?${params}`);
-      setTransactions(data);
+      const res = await apiFetch<unknown>(`/finance/transactions?${buildQs().toString()}`);
+      const p = unwrapPaginated<TransactionRow>(res);
+      if (p) {
+        setRows(p.data);
+        setMeta({ page: p.page, lastPage: p.lastPage, total: p.total });
+      } else {
+        setRows([]);
+        setMeta({ page: 1, lastPage: 1, total: 0 });
+      }
     } catch {
-      setTransactions([]);
+      setRows([]);
+      setMeta({ page: 1, lastPage: 1, total: 0 });
     } finally {
       setLoading(false);
     }
+  }, [buildQs]);
+
+  const fetchSummary = useCallback(async () => {
+    try {
+      const q = buildQs();
+      q.set("page", "1");
+      q.set("limit", "100000");
+      const res = await apiFetch<unknown>(`/finance/transactions?${q.toString()}`);
+      const p = unwrapPaginated<TransactionRow>(res);
+      const data = p?.data || [];
+      const totalCredits = data.filter((x) => x.type === "CREDIT").reduce((s, x) => s + Number(x.amount || 0), 0);
+      const totalDebits = data.filter((x) => x.type === "DEBIT").reduce((s, x) => s + Number(x.amount || 0), 0);
+      setSummary({ totalCredits, totalDebits, netBalance: totalCredits - totalDebits });
+    } catch {
+      setSummary({ totalCredits: 0, totalDebits: 0, netBalance: 0 });
+    }
+  }, [buildQs]);
+
+  useEffect(() => {
+    void fetchAccounts();
+  }, [fetchAccounts]);
+
+  useEffect(() => {
+    void fetchRows();
+    void fetchSummary();
+  }, [fetchRows, fetchSummary]);
+
+  const refresh = () => {
+    void fetchRows();
+    void fetchSummary();
   };
 
-  useEffect(() => { fetchAccounts(); }, [branchId]);
-  useEffect(() => { fetchData(); }, [branchId, filterAccount, filterType, dateFrom, dateTo]);
-
-  const filtered = transactions.filter(
-    (t) =>
-      t.reference?.toLowerCase().includes(search.toLowerCase()) ||
-      t.description?.toLowerCase().includes(search.toLowerCase()) ||
-      t.account?.name?.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const totalCredits = transactions.filter((t) => t.type === "Credit").reduce((s, t) => s + t.amount, 0);
-  const totalDebits = transactions.filter((t) => t.type === "Debit").reduce((s, t) => s + t.amount, 0);
-  const netBalance = totalCredits - totalDebits;
-
   const openAdd = () => {
-    setFormAccountId(accounts[0]?.id?.toString() || "");
-    setFormType("Credit");
+    setFormAccountId(accounts[0]?.id ? String(accounts[0].id) : "");
+    setFormType("CREDIT");
     setFormAmount("");
     setFormReference("");
     setFormDescription("");
@@ -111,88 +173,101 @@ export default function TransactionsPage() {
           accountId: Number(formAccountId),
           type: formType,
           amount: parseFloat(formAmount) || 0,
-          reference: formReference,
-          description: formDescription,
-          branchId,
+          reference: formReference.trim() || undefined,
+          description: formDescription.trim() || undefined,
         }),
       });
       setModalOpen(false);
-      fetchData();
-    } catch (e: any) {
-      alert(e.message);
+      refresh();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSaving(false);
     }
   };
 
   const columns = [
-    { key: "#", label: "#", className: "w-12", render: (_: Transaction, i: number) => i + 1 },
-    { key: "date", label: "Date", render: (t: Transaction) => formatDate(t.date) },
-    { key: "account", label: "Account", render: (t: Transaction) => t.account?.name || "—" },
+    { key: "#", label: "#", className: "w-12", render: (_: TransactionRow, i: number) => (page - 1) * PAGE_SIZE + i + 1 },
+    { key: "createdAt", label: "Date", render: (t: TransactionRow) => formatDate(t.createdAt) },
+    { key: "account", label: "Account", render: (t: TransactionRow) => t.account?.name || "—" },
     {
       key: "type",
       label: "Type",
-      render: (t: Transaction) => (
-        <Badge variant={t.type === "Credit" ? "success" : "destructive"}>{t.type}</Badge>
+      render: (t: TransactionRow) => (
+        <Badge variant={t.type === "CREDIT" ? "success" : "destructive"}>
+          {t.type === "CREDIT" ? "Credit" : "Debit"}
+        </Badge>
       ),
     },
-    { key: "amount", label: "Amount", render: (t: Transaction) => <span className="font-semibold">{formatPrice(t.amount)}</span> },
-    { key: "reference", label: "Reference", render: (t: Transaction) => t.reference || "—" },
-    { key: "description", label: "Description", render: (t: Transaction) => <span className="max-w-[200px] truncate block">{t.description || "—"}</span> },
+    { key: "amount", label: "Amount", render: (t: TransactionRow) => <span className="font-semibold">{formatPrice(Number(t.amount || 0))}</span> },
+    { key: "reference", label: "Reference", render: (t: TransactionRow) => t.reference || "—" },
+    { key: "description", label: "Description", render: (t: TransactionRow) => <span className="block max-w-[220px] truncate">{t.description || "—"}</span> },
   ];
 
   return (
-    <div className="p-4 md:p-6">
-      <PageHeader
-        title="Transactions"
-        description="View and manage financial transactions"
-        action={
-          <Button onClick={openAdd}>
-            <Plus size={16} className="mr-1.5" /> Add Transaction
-          </Button>
-        }
-      />
+    <div className="w-full min-w-0 space-y-5 pb-8 pt-1 sm:space-y-6 sm:pb-10 sm:pt-2">
+      <InventoryListPageHeader icon={Scale} title="Transactions" description="View and add financial transactions with server-side filters.">
+        <Button type="button" variant="outline" size="sm" className="h-10 w-full rounded-xl sm:h-9 sm:w-auto" onClick={() => router.back()}>
+          Back
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="h-10 w-full gap-2 rounded-xl sm:h-9 sm:w-auto" onClick={refresh}>
+          <RotateCcw className="h-4 w-4" /> Refresh
+        </Button>
+        <Button type="button" className="h-10 w-full gap-2 rounded-xl sm:h-9 sm:w-auto" onClick={openAdd}>
+          <Plus className="h-4 w-4" /> Add Transaction
+        </Button>
+      </InventoryListPageHeader>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <StatCard title="Total Credits" value={formatPrice(totalCredits)} icon={ArrowUpCircle} />
-        <StatCard title="Total Debits" value={formatPrice(totalDebits)} icon={ArrowDownCircle} />
-        <StatCard title="Net Balance" value={formatPrice(netBalance)} icon={Scale} />
-      </div>
+      <section className={`${INVENTORY_CARD_SHELL} p-5 sm:p-6 md:p-7`}>
+        <InventorySectionHeader icon={LayoutGrid} title="Overview" description="Summary reflects active filters." />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <StatCard title="Total Credits" value={formatPrice(summary.totalCredits)} icon={ArrowUpCircle} />
+          <StatCard title="Total Debits" value={formatPrice(summary.totalDebits)} icon={ArrowDownCircle} />
+          <StatCard title="Net Balance" value={formatPrice(summary.netBalance)} icon={Scale} />
+        </div>
+      </section>
 
-      <FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search transactions...">
-        <select
-          value={filterAccount}
-          onChange={(e) => setFilterAccount(e.target.value)}
-          className="h-10 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <option value="">All Accounts</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>{a.name}</option>
-          ))}
-        </select>
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-          className="h-10 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <option value="">All Types</option>
-          <option value="Credit">Credit</option>
-          <option value="Debit">Debit</option>
-        </select>
-        <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-auto" />
-        <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-auto" />
-      </FilterBar>
-
-      <DataTable columns={columns} data={filtered} loading={loading} />
+      <section className={INVENTORY_CARD_SHELL}>
+        <div className="border-b border-border/50 bg-muted/15 px-5 py-4 sm:px-6 sm:py-5">
+          <InventorySectionHeader compact icon={Layers} title="Transaction list" description={`Paginated (${PAGE_SIZE} per page).`} />
+        </div>
+        <div className="space-y-4 p-5 sm:p-6 md:p-7">
+          <FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search transactions...">
+            <select
+              value={filterAccount}
+              onChange={(e) => setFilterAccount(e.target.value)}
+              className="h-10 rounded-xl border border-input bg-background/80 px-3 text-sm shadow-sm backdrop-blur-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">All Accounts</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="h-10 rounded-xl border border-input bg-background/80 px-3 text-sm shadow-sm backdrop-blur-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">All Types</option>
+              <option value="CREDIT">Credit</option>
+              <option value="DEBIT">Debit</option>
+            </select>
+            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-10 w-40 rounded-xl" />
+            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-10 w-40 rounded-xl" />
+          </FilterBar>
+          <DataTable columns={columns} data={rows} loading={loading} inventoryStyle />
+          <InventoryTablePagination page={meta.page} lastPage={meta.lastPage} total={meta.total} loading={loading} onPageChange={setPage} />
+        </div>
+      </section>
 
       <Modal open={modalOpen} onOpenChange={setModalOpen} title="Add Transaction">
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Account</label>
+            <label className="mb-1.5 block text-sm font-medium">Account</label>
             <select
               value={formAccountId}
               onChange={(e) => setFormAccountId(e.target.value)}
-              className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="">Select Account</option>
               {accounts.map((a) => (
@@ -201,26 +276,26 @@ export default function TransactionsPage() {
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Type</label>
+            <label className="mb-1.5 block text-sm font-medium">Type</label>
             <select
               value={formType}
-              onChange={(e) => setFormType(e.target.value as "Credit" | "Debit")}
-              className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onChange={(e) => setFormType(e.target.value as TxType)}
+              className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <option value="Credit">Credit</option>
-              <option value="Debit">Debit</option>
+              <option value="CREDIT">Credit</option>
+              <option value="DEBIT">Debit</option>
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Amount</label>
+            <label className="mb-1.5 block text-sm font-medium">Amount</label>
             <Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} placeholder="0" />
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Reference</label>
+            <label className="mb-1.5 block text-sm font-medium">Reference</label>
             <Input value={formReference} onChange={(e) => setFormReference(e.target.value)} placeholder="e.g. INV-001" />
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Description</label>
+            <label className="mb-1.5 block text-sm font-medium">Description</label>
             <Input value={formDescription} onChange={(e) => setFormDescription(e.target.value)} placeholder="Transaction description" />
           </div>
           <div className="flex justify-end gap-2 pt-2">

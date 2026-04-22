@@ -19,8 +19,10 @@ interface Branch {
 
 export function AdminHeader({
   onToggleSidebar,
+  showSidebarToggle = true,
 }: {
   onToggleSidebar?: () => void;
+  showSidebarToggle?: boolean;
 }) {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelected] = useState<number | null>(null);
@@ -86,14 +88,16 @@ export function AdminHeader({
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-3">
-        <button
-          type="button"
-          onClick={onToggleSidebar}
-          className="shrink-0 rounded-lg p-2 text-foreground hover:bg-muted lg:hidden"
-          aria-label="Open menu"
-        >
-          <Menu className="size-5" aria-hidden />
-        </button>
+        {showSidebarToggle && (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className="shrink-0 rounded-lg p-2 text-foreground hover:bg-muted lg:hidden"
+            aria-label="Open menu"
+          >
+            <Menu className="size-5" aria-hidden />
+          </button>
+        )}
         <label className="sr-only" htmlFor="header-branch">
           Branch
         </label>

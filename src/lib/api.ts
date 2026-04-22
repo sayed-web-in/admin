@@ -1,5 +1,9 @@
 export function getApiUrl(): string {
-  return (process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000");
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+  if (!apiUrl) {
+    throw new Error("NEXT_PUBLIC_API_URL is not set");
+  }
+  return apiUrl;
 }
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {

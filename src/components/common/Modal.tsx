@@ -1,5 +1,6 @@
 "use client";
 import type { ReactNode } from "react";
+import { useEffect } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,16 @@ export function Modal({
   size,
   modal = false,
 }: ModalProps) {
+  // Add/remove body class for background blur effect
+  useEffect(() => {
+    if (open) {
+      document.body.classList.add("modal-open");
+    } else {
+      document.body.classList.remove("modal-open");
+    }
+    return () => document.body.classList.remove("modal-open");
+  }, [open]);
+
   const sizeClass =
     size === "sm"
       ? "max-w-md"
@@ -52,10 +63,18 @@ export function Modal({
   return (
     <Dialog.Root modal={modal} open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <Dialog.Overlay
+          className="fixed inset-0 z-50 backdrop-blur-sm bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:duration-200 data-[state=closed]:duration-150"
+        />
         <Dialog.Content
           className={cn(
-            "fixed left-[50%] top-[50%] z-50 flex max-h-[90vh] w-full translate-x-[-50%] translate-y-[-50%] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+            "fixed left-[50%] top-[50%] z-50 flex max-h-[90vh] w-full translate-x-[-50%] translate-y-[-50%] flex-col overflow-hidden",
+            "rounded-2xl border border-border/60 bg-card shadow-2xl ring-1 ring-black/[0.06]",
+            "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+            "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-100",
+            "data-[state=closed]:slide-out-to-bottom-2 data-[state=open]:slide-in-from-bottom-4",
+            "data-[state=open]:duration-250 data-[state=closed]:duration-150",
             sizeClass ?? "max-w-lg",
             className
           )}

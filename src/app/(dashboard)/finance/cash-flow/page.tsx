@@ -1,161 +1,148 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ArrowUpCircle, ArrowDownCircle, Activity, Search } from "lucide-react";
-import { PageHeader } from "@/components/common/PageHeader";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  ArrowUpCircle,
+  ArrowDownCircle,
+  Activity,
+  Search,
+  RotateCcw,
+  LayoutGrid,
+  Layers,
+} from "lucide-react";
+import { apiFetch } from "@/lib/api";
+import { formatPrice } from "@/lib/utils";
+import { getSelectedBranch } from "@/lib/auth";
+import {
+  INVENTORY_CARD_SHELL,
+  InventoryListPageHeader,
+  InventorySectionHeader,
+} from "@/components/inventory/InventoryCrudLayout";
 import { StatCard } from "@/components/common/StatCard";
 import { DataTable } from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { apiFetch } from "@/lib/api";
-import { formatPrice } from "@/lib/utils";
-import { getSelectedBranch } from "@/lib/auth";
 
-interface MonthlyBreakdown {
+interface MonthlyRow {
   month: string;
   inflow: number;
   outflow: number;
   net: number;
 }
 
-interface CashFlowData {
-  totalInflow: number;
-  totalOutflow: number;
-  netCashFlow: number;
-  monthly: MonthlyBreakdown[];
-}
-
 export default function CashFlowPage() {
-  const [data, setData] = useState<CashFlowData | null>(null);
-  const [loading, setLoading] = useState(false);
-
+  const router = useRouter();
+  const branchId = getSelectedBranch();
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
   const today = now.toISOString().slice(0, 10);
 
   const [dateFrom, setDateFrom] = useState(firstDay);
   const [dateTo, setDateTo] = useState(today);
-
-  const branchId = getSelectedBranch();
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState({ totalInflow: 0, totalOutflow: 0, netCashFlow: 0 });
+  const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (branchId) params.set("branchId", String(branchId));
-      if (dateFrom) params.set("dateFrom", dateFrom);
-      if (dateTo) params.set("dateTo", dateTo);
-      const res = await apiFetch<CashFlowData>(`/finance/cash-flow?${params}`);
-      setData(res);
+      const q = new URLSearchParams();
+      if (dateFrom) q.set("dateFrom", dateFrom);
+      if (dateTo) q.set("dateTo", dateTo);
+      if (branchId) q.set("branchId", String(branchId));
+      const raw = (await apiFetch<unknown>(`/finance/cash-flow?${q.toString()}`)) as Record<string, unknown>;
+
+      const totalInflow = Number(raw.totalInflow) || 0;
+      const totalOutflow = Number(raw.totalOutflow) || 0;
+      const netCashFlow = Number(raw.netFlow ?? raw.netCashFlow) || 0;
+      const breakdown = (raw.monthlyBreakdown ?? raw.monthly) as Record<string, unknown> | undefined;
+      const rows: MonthlyRow[] = breakdown
+        ? Object.entries(breakdown).map(([month, value]) => {
+            const v = value as Record<string, unknown>;
+            return {
+              month,
+              inflow: Number(v.inflow) || 0,
+              outflow: Number(v.outflow) || 0,
+              net: Number(v.net) || 0,
+            };
+          })
+        : [];
+      rows.sort((a, b) => a.month.localeCompare(b.month));
+
+      setSummary({ totalInflow, totalOutflow, netCashFlow });
+      setMonthly(rows);
     } catch {
-      setData(null);
+      setSummary({ totalInflow: 0, totalOutflow: 0, netCashFlow: 0 });
+      setMonthly([]);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchData(); }, [branchId]);
-
-  const monthly = data?.monthly || [];
-
-  const columns = [
-    { key: "month", label: "Month", render: (m: MonthlyBreakdown) => <span className="font-medium">{m.month}</span> },
-    {
-      key: "inflow",
-      label: "Inflow",
-      render: (m: MonthlyBreakdown) => <span className="text-green-600 font-semibold">{formatPrice(m.inflow)}</span>,
-    },
-    {
-      key: "outflow",
-      label: "Outflow",
-      render: (m: MonthlyBreakdown) => <span className="text-red-600 font-semibold">{formatPrice(m.outflow)}</span>,
-    },
-    {
-      key: "net",
-      label: "Net",
-      render: (m: MonthlyBreakdown) => (
-        <span className={`font-bold ${m.net >= 0 ? "text-green-600" : "text-red-600"}`}>
-          {formatPrice(m.net)}
-        </span>
-      ),
-    },
-  ];
+  const columns = useMemo(
+    () => [
+      { key: "month", label: "Month", render: (m: MonthlyRow) => <span className="font-medium">{m.month}</span> },
+      { key: "inflow", label: "Inflow", render: (m: MonthlyRow) => <span className="font-semibold text-emerald-600">{formatPrice(m.inflow)}</span> },
+      { key: "outflow", label: "Outflow", render: (m: MonthlyRow) => <span className="font-semibold text-red-600">{formatPrice(m.outflow)}</span> },
+      {
+        key: "net",
+        label: "Net",
+        render: (m: MonthlyRow) => (
+          <span className={`font-bold ${m.net >= 0 ? "text-emerald-600" : "text-red-600"}`}>{formatPrice(m.net)}</span>
+        ),
+      },
+    ],
+    [],
+  );
 
   return (
-    <div className="p-4 md:p-6">
-      <PageHeader title="Cash Flow" description="Cash flow analysis over time" />
-
-      <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 mb-6">
-        <div>
-          <label className="text-sm font-medium text-foreground mb-1.5 block">From</label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-auto" />
-        </div>
-        <div>
-          <label className="text-sm font-medium text-foreground mb-1.5 block">To</label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-auto" />
-        </div>
-        <Button onClick={fetchData} disabled={loading}>
-          <Search size={16} className="mr-1.5" /> {loading ? "Loading..." : "Generate"}
+    <div className="w-full min-w-0 space-y-5 pb-8 pt-1 sm:space-y-6 sm:pb-10 sm:pt-2">
+      <InventoryListPageHeader icon={Activity} title="Cash Flow" description="Analyze inflow and outflow by date range.">
+        <Button type="button" variant="outline" size="sm" className="h-10 w-full rounded-xl sm:h-9 sm:w-auto" onClick={() => router.back()}>
+          Back
         </Button>
-      </div>
+        <Button type="button" variant="outline" size="sm" className="h-10 w-full gap-2 rounded-xl sm:h-9 sm:w-auto" onClick={fetchData}>
+          <RotateCcw className="h-4 w-4" /> Refresh
+        </Button>
+      </InventoryListPageHeader>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <StatCard
-          title="Total Inflow"
-          value={formatPrice(data?.totalInflow || 0)}
-          icon={ArrowUpCircle}
-          className="border-l-4 border-l-green-500"
-        />
-        <StatCard
-          title="Total Outflow"
-          value={formatPrice(data?.totalOutflow || 0)}
-          icon={ArrowDownCircle}
-          className="border-l-4 border-l-red-500"
-        />
-        <StatCard
-          title="Net Cash Flow"
-          value={formatPrice(data?.netCashFlow || 0)}
-          icon={Activity}
-          className={`border-l-4 ${(data?.netCashFlow || 0) >= 0 ? "border-l-green-500" : "border-l-red-500"}`}
-        />
-      </div>
+      <section className={INVENTORY_CARD_SHELL}>
+        <div className="border-b border-border/50 bg-muted/15 px-5 py-4 sm:px-6 sm:py-5">
+          <InventorySectionHeader compact icon={Search} title="Generate cash flow" description="Pick a date range and run report." />
+        </div>
+        <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-end sm:p-6 md:p-7">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">From</label>
+            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-10 rounded-xl" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">To</label>
+            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-10 rounded-xl" />
+          </div>
+          <Button onClick={fetchData} disabled={loading} className="h-10 gap-2 rounded-xl">
+            <Search className="h-4 w-4" /> {loading ? "Loading..." : "Generate"}
+          </Button>
+        </div>
+      </section>
 
-      {loading ? (
-        <div className="bg-white rounded-xl border border-border p-8 text-center text-muted-foreground">Loading...</div>
-      ) : !data ? (
-        <div className="bg-white rounded-xl border border-border p-8 text-center text-muted-foreground">
-          Select a date range and click Generate to view cash flow.
+      <section className={`${INVENTORY_CARD_SHELL} p-5 sm:p-6 md:p-7`}>
+        <InventorySectionHeader icon={LayoutGrid} title="Overview" description="Totals for selected range." />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <StatCard title="Total Inflow" value={formatPrice(summary.totalInflow)} icon={ArrowUpCircle} />
+          <StatCard title="Total Outflow" value={formatPrice(summary.totalOutflow)} icon={ArrowDownCircle} />
+          <StatCard title="Net Cash Flow" value={formatPrice(summary.netCashFlow)} icon={Activity} />
         </div>
-      ) : monthly.length > 0 ? (
-        <>
-          <h2 className="text-lg font-semibold text-foreground mb-3">Monthly Breakdown</h2>
-          <DataTable columns={columns} data={monthly} />
-        </>
-      ) : (
-        <div className="bg-white rounded-xl border border-border overflow-hidden">
-          <div className="px-4 py-3 border-b border-border bg-muted/50">
-            <h2 className="text-sm font-semibold text-foreground">Summary</h2>
-          </div>
-          <div className="p-6">
-            <div className="grid grid-cols-3 gap-6 text-center">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Inflow</p>
-                <p className="text-xl font-bold text-green-600">{formatPrice(data.totalInflow)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Outflow</p>
-                <p className="text-xl font-bold text-red-600">{formatPrice(data.totalOutflow)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Net</p>
-                <p className={`text-xl font-bold ${data.netCashFlow >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  {formatPrice(data.netCashFlow)}
-                </p>
-              </div>
-            </div>
-          </div>
+      </section>
+
+      <section className={INVENTORY_CARD_SHELL}>
+        <div className="border-b border-border/50 bg-muted/15 px-5 py-4 sm:px-6 sm:py-5">
+          <InventorySectionHeader compact icon={Layers} title="Monthly breakdown" description="Grouped by month from API response." />
         </div>
-      )}
+        <div className="p-5 sm:p-6 md:p-7">
+          <DataTable columns={columns} data={monthly} loading={loading} inventoryStyle />
+        </div>
+      </section>
     </div>
   );
 }

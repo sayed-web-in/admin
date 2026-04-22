@@ -1,115 +1,177 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { TrendingUp, CalendarDays, CalendarClock, Pencil, Trash2, Plus } from "lucide-react";
-import { PageHeader } from "@/components/common/PageHeader";
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import {
+  TrendingUp,
+  CalendarDays,
+  CalendarClock,
+  Pencil,
+  Trash2,
+  Plus,
+  RotateCcw,
+  LayoutGrid,
+  Layers,
+} from "lucide-react";
+import { apiFetch } from "@/lib/api";
+import { unwrapPaginated } from "@/lib/apiList";
+import { formatPrice, formatDate } from "@/lib/utils";
+import { getSelectedBranch } from "@/lib/auth";
+import {
+  INVENTORY_CARD_SHELL,
+  InventoryListPageHeader,
+  InventorySectionHeader,
+} from "@/components/inventory/InventoryCrudLayout";
 import { StatCard } from "@/components/common/StatCard";
 import { FilterBar } from "@/components/common/FilterBar";
 import { DataTable } from "@/components/common/DataTable";
+import { InventoryTablePagination } from "@/components/inventory/InventoryTablePagination";
 import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { apiFetch } from "@/lib/api";
-import { formatPrice, formatDate } from "@/lib/utils";
-import { getSelectedBranch } from "@/lib/auth";
+import {
+  TableRowActions,
+  TableRowActionButton,
+  tableActionIconClassName,
+} from "@/components/common/TableRowActions";
+
+const PAGE_SIZE = 20;
+const selectClass =
+  "h-10 rounded-xl border border-input bg-background/80 px-3 text-sm shadow-sm backdrop-blur-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 interface Category {
   id: number;
   name: string;
 }
-
 interface Account {
   id: number;
   name: string;
 }
-
 interface Income {
   id: number;
   date: string;
   category: Category;
   categoryId: number;
-  account?: Account;
-  accountId?: number;
   amount: number;
-  note: string;
+  note?: string;
 }
 
 export default function IncomePage() {
-  const [incomes, setIncomes] = useState<Income[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const router = useRouter();
+  const branchId = getSelectedBranch();
+  const [rows, setRows] = useState<Income[]>([]);
+  const [cats, setCats] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ page: 1, lastPage: 1, total: 0 });
+  const [summary, setSummary] = useState({
+    totalIncome: 0,
+    thisMonthIncome: 0,
+    todayIncome: 0,
+  });
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<Income | null>(null);
-
+  const [saving, setSaving] = useState(false);
   const [formCategoryId, setFormCategoryId] = useState("");
   const [formAccountId, setFormAccountId] = useState("");
   const [formAmount, setFormAmount] = useState("");
   const [formNote, setFormNote] = useState("");
   const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10));
-  const [saving, setSaving] = useState(false);
 
-  const branchId = getSelectedBranch();
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  const fetchLookups = async () => {
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, filterCategory, dateFrom, dateTo, branchId]);
+
+  const buildQs = useCallback(() => {
+    const q = new URLSearchParams();
+    q.set("page", String(page));
+    q.set("limit", String(PAGE_SIZE));
+    if (debouncedSearch) q.set("search", debouncedSearch);
+    if (filterCategory) q.set("categoryId", filterCategory);
+    if (dateFrom) q.set("dateFrom", dateFrom);
+    if (dateTo) q.set("dateTo", dateTo);
+    return q;
+  }, [page, debouncedSearch, filterCategory, dateFrom, dateTo]);
+
+  const fetchLookups = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
-      if (branchId) params.set("branchId", String(branchId));
-      const [cats, accs] = await Promise.all([
-        apiFetch<Category[]>(`/finance/income-categories?${params}`),
-        apiFetch<Account[]>(`/finance/accounts?${params}`),
+      const [c, a] = await Promise.all([
+        apiFetch<unknown>("/finance/income-categories"),
+        apiFetch<unknown>("/finance/accounts"),
       ]);
-      setCategories(cats);
-      setAccounts(accs);
+      setCats(Array.isArray(c) ? (c as Category[]) : []);
+      setAccounts(Array.isArray(a) ? (a as Account[]) : []);
     } catch {
-      setCategories([]);
+      setCats([]);
       setAccounts([]);
     }
-  };
+  }, []);
 
-  const fetchData = async () => {
+  const fetchRows = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (branchId) params.set("branchId", String(branchId));
-      if (filterCategory) params.set("categoryId", filterCategory);
-      if (dateFrom) params.set("dateFrom", dateFrom);
-      if (dateTo) params.set("dateTo", dateTo);
-      const data = await apiFetch<Income[]>(`/finance/incomes?${params}`);
-      setIncomes(data);
+      const res = await apiFetch<unknown>(`/finance/incomes?${buildQs().toString()}`);
+      const p = unwrapPaginated<Income>(res);
+      if (p) {
+        setRows(p.data);
+        setMeta({ page: p.page, lastPage: p.lastPage, total: p.total });
+      } else {
+        setRows([]);
+        setMeta({ page: 1, lastPage: 1, total: 0 });
+      }
     } catch {
-      setIncomes([]);
+      setRows([]);
+      setMeta({ page: 1, lastPage: 1, total: 0 });
     } finally {
       setLoading(false);
     }
+  }, [buildQs]);
+
+  const fetchSummary = useCallback(async () => {
+    try {
+      const q = buildQs();
+      q.delete("page");
+      q.delete("limit");
+      const res = await apiFetch<unknown>(`/finance/incomes/summary?${q.toString()}`);
+      const r = res as Record<string, unknown>;
+      setSummary({
+        totalIncome: Number(r.totalIncome) || 0,
+        thisMonthIncome: Number(r.thisMonthIncome) || 0,
+        todayIncome: Number(r.todayIncome) || 0,
+      });
+    } catch {
+      setSummary({ totalIncome: 0, thisMonthIncome: 0, todayIncome: 0 });
+    }
+  }, [buildQs]);
+
+  useEffect(() => {
+    void fetchLookups();
+  }, [fetchLookups]);
+
+  useEffect(() => {
+    void fetchRows();
+    void fetchSummary();
+  }, [fetchRows, fetchSummary]);
+
+  const refresh = () => {
+    void fetchRows();
+    void fetchSummary();
   };
-
-  useEffect(() => { fetchLookups(); }, [branchId]);
-  useEffect(() => { fetchData(); }, [branchId, filterCategory, dateFrom, dateTo]);
-
-  const filtered = incomes.filter(
-    (e) =>
-      e.category?.name?.toLowerCase().includes(search.toLowerCase()) ||
-      e.note?.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const totalIncome = incomes.reduce((s, e) => s + e.amount, 0);
-  const now = new Date();
-  const thisMonthIncome = incomes
-    .filter((e) => { const d = new Date(e.date); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); })
-    .reduce((s, e) => s + e.amount, 0);
-  const todayStr = now.toISOString().slice(0, 10);
-  const todayIncome = incomes
-    .filter((e) => e.date?.slice(0, 10) === todayStr)
-    .reduce((s, e) => s + e.amount, 0);
 
   const openAdd = () => {
     setEditItem(null);
-    setFormCategoryId(categories[0]?.id?.toString() || "");
+    setFormCategoryId(cats[0]?.id ? String(cats[0].id) : "");
     setFormAccountId("");
     setFormAmount("");
     setFormNote("");
@@ -120,7 +182,6 @@ export default function IncomePage() {
   const openEdit = (item: Income) => {
     setEditItem(item);
     setFormCategoryId(String(item.categoryId));
-    setFormAccountId(item.accountId ? String(item.accountId) : "");
     setFormAmount(String(item.amount));
     setFormNote(item.note || "");
     setFormDate(item.date?.slice(0, 10) || new Date().toISOString().slice(0, 10));
@@ -134,19 +195,24 @@ export default function IncomePage() {
         categoryId: Number(formCategoryId),
         accountId: formAccountId ? Number(formAccountId) : undefined,
         amount: parseFloat(formAmount) || 0,
-        note: formNote,
+        note: formNote || undefined,
         date: formDate,
-        branchId,
       };
       if (editItem) {
-        await apiFetch(`/finance/incomes/${editItem.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await apiFetch(`/finance/incomes/${editItem.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
       } else {
-        await apiFetch("/finance/incomes", { method: "POST", body: JSON.stringify(body) });
+        await apiFetch("/finance/incomes", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
       }
       setModalOpen(false);
-      fetchData();
-    } catch (e: any) {
-      alert(e.message);
+      refresh();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -156,96 +222,95 @@ export default function IncomePage() {
     if (!confirm("Are you sure you want to delete this income record?")) return;
     try {
       await apiFetch(`/finance/incomes/${id}`, { method: "DELETE" });
-      fetchData();
-    } catch (e: any) {
-      alert(e.message);
+      refresh();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Delete failed");
     }
   };
 
   const columns = [
-    { key: "#", label: "#", className: "w-12", render: (_: Income, i: number) => i + 1 },
+    { key: "#", label: "#", className: "w-12", render: (_: Income, i: number) => (page - 1) * PAGE_SIZE + i + 1 },
     { key: "date", label: "Date", render: (e: Income) => formatDate(e.date) },
     { key: "category", label: "Category", render: (e: Income) => e.category?.name || "—" },
-    { key: "account", label: "Account", render: (e: Income) => e.account?.name || "—" },
-    { key: "amount", label: "Amount", render: (e: Income) => <span className="font-semibold text-green-600">{formatPrice(e.amount)}</span> },
-    { key: "note", label: "Note", render: (e: Income) => <span className="max-w-[200px] truncate block">{e.note || "—"}</span> },
+    { key: "amount", label: "Amount", render: (e: Income) => <span className="font-semibold text-emerald-600">{formatPrice(e.amount)}</span> },
+    { key: "note", label: "Note", render: (e: Income) => <span className="block max-w-[220px] truncate">{e.note || "—"}</span> },
     {
       key: "actions",
       label: "Actions",
       render: (e: Income) => (
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={() => openEdit(e)}>
-            <Pencil size={15} />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => handleDelete(e.id)}>
-            <Trash2 size={15} className="text-red-500" />
-          </Button>
-        </div>
+        <TableRowActions>
+          <TableRowActionButton title="Edit" onClick={() => openEdit(e)}>
+            <Pencil className={tableActionIconClassName} />
+          </TableRowActionButton>
+          <TableRowActionButton variant="danger" title="Delete" onClick={() => handleDelete(e.id)}>
+            <Trash2 className={tableActionIconClassName} />
+          </TableRowActionButton>
+        </TableRowActions>
       ),
     },
   ];
 
   return (
-    <div className="p-4 md:p-6">
-      <PageHeader
+    <div className="w-full min-w-0 space-y-5 pb-8 pt-1 sm:space-y-6 sm:pb-10 sm:pt-2">
+      <InventoryListPageHeader
+        icon={TrendingUp}
         title="Income"
-        description="Track and manage income"
-        action={
-          <Button onClick={openAdd}>
-            <Plus size={16} className="mr-1.5" /> Add Income
-          </Button>
-        }
-      />
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <StatCard title="Total Income" value={formatPrice(totalIncome)} icon={TrendingUp} />
-        <StatCard title="This Month" value={formatPrice(thisMonthIncome)} icon={CalendarDays} />
-        <StatCard title="Today" value={formatPrice(todayIncome)} icon={CalendarClock} />
-      </div>
-
-      <FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search income...">
-        <select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="h-10 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <option value="">All Categories</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-        <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-auto" />
-        <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-auto" />
-      </FilterBar>
-
-      <DataTable columns={columns} data={filtered} loading={loading} />
-
-      <Modal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        title={editItem ? "Edit Income" : "Add Income"}
+        description="Track and manage income with server-side filters and pagination."
       >
+        <Button type="button" variant="outline" size="sm" className="h-10 w-full rounded-xl sm:h-9 sm:w-auto" onClick={() => router.back()}>
+          Back
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="h-10 w-full gap-2 rounded-xl sm:h-9 sm:w-auto" onClick={refresh}>
+          <RotateCcw className="h-4 w-4" /> Refresh
+        </Button>
+        <Button type="button" className="h-10 w-full gap-2 rounded-xl sm:h-9 sm:w-auto" onClick={openAdd}>
+          <Plus className="h-4 w-4" /> Add Income
+        </Button>
+      </InventoryListPageHeader>
+
+      <section className={`${INVENTORY_CARD_SHELL} p-5 sm:p-6 md:p-7`}>
+        <InventorySectionHeader icon={LayoutGrid} title="Overview" description="Summary reflects current filters." />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <StatCard title="Total Income" value={formatPrice(summary.totalIncome)} icon={TrendingUp} />
+          <StatCard title="This Month" value={formatPrice(summary.thisMonthIncome)} icon={CalendarDays} />
+          <StatCard title="Today" value={formatPrice(summary.todayIncome)} icon={CalendarClock} />
+        </div>
+      </section>
+
+      <section className={INVENTORY_CARD_SHELL}>
+        <div className="border-b border-border/50 bg-muted/15 px-5 py-4 sm:px-6 sm:py-5">
+          <InventorySectionHeader compact icon={Layers} title="Income list" description={`Paginated (${PAGE_SIZE} per page).`} />
+        </div>
+        <div className="space-y-4 p-5 sm:p-6 md:p-7">
+          <FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search income...">
+            <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className={selectClass}>
+              <option value="">All Categories</option>
+              {cats.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-10 w-40 rounded-xl" />
+            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-10 w-40 rounded-xl" />
+          </FilterBar>
+          <DataTable columns={columns} data={rows} loading={loading} inventoryStyle />
+          <InventoryTablePagination page={meta.page} lastPage={meta.lastPage} total={meta.total} loading={loading} onPageChange={setPage} />
+        </div>
+      </section>
+
+      <Modal open={modalOpen} onOpenChange={setModalOpen} title={editItem ? "Edit Income" : "Add Income"}>
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Category</label>
-            <select
-              value={formCategoryId}
-              onChange={(e) => setFormCategoryId(e.target.value)}
-              className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
+            <label className="mb-1.5 block text-sm font-medium">Category</label>
+            <select value={formCategoryId} onChange={(e) => setFormCategoryId(e.target.value)} className={selectClass}>
               <option value="">Select Category</option>
-              {categories.map((c) => (
+              {cats.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Account (optional)</label>
-            <select
-              value={formAccountId}
-              onChange={(e) => setFormAccountId(e.target.value)}
-              className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
+            <label className="mb-1.5 block text-sm font-medium">Account (optional)</label>
+            <select value={formAccountId} onChange={(e) => setFormAccountId(e.target.value)} className={selectClass}>
               <option value="">No Account</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
@@ -253,15 +318,15 @@ export default function IncomePage() {
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Amount</label>
+            <label className="mb-1.5 block text-sm font-medium">Amount</label>
             <Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} placeholder="0" />
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Note</label>
+            <label className="mb-1.5 block text-sm font-medium">Note</label>
             <Input value={formNote} onChange={(e) => setFormNote(e.target.value)} placeholder="Income description" />
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground mb-1.5 block">Date</label>
+            <label className="mb-1.5 block text-sm font-medium">Date</label>
             <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} />
           </div>
           <div className="flex justify-end gap-2 pt-2">

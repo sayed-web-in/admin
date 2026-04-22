@@ -30,10 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files — .env.local tracked for private repo; rotate if repo goes public
+# env files (never commit secrets)
 .env*
 !.env.example
-!.env.local
 
 # vercel
 .vercel

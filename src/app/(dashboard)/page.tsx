@@ -113,7 +113,7 @@ export default function DashboardPage() {
           <p className="text-sm text-muted-foreground mt-1">Welcome back! Here&apos;s your business overview for today.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/sales/pos">
+          <Link href="/pos" target="_blank" rel="noopener noreferrer">
             <Button size="sm">
               <Monitor size={16} className="mr-1.5" /> POS
             </Button>

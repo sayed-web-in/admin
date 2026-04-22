@@ -38,6 +38,9 @@ import {
   RotateCcw,
   Hash,
   Store,
+  ShoppingBag,
+  Image,
+  ClipboardList as OrdersIcon,
   UserPlus,
   UserCheck,
   DollarSign,
@@ -89,7 +92,7 @@ const menuItems: MenuItem[] = [
     label: "Sales & POS",
     icon: ShoppingCart,
     children: [
-      { label: "POS", href: "/sales/pos", icon: CreditCard },
+      { label: "POS", href: "/pos", icon: CreditCard },
       { label: "Pay Later", href: "/sales/pay-later", icon: Clock },
       { label: "Services", href: "/sales/services", icon: Wrench },
       { label: "Sales History", href: "/sales/history", icon: History },
@@ -142,7 +145,14 @@ const menuItems: MenuItem[] = [
     ],
   },
   { label: "Branch Management", href: "/branches", icon: Building2 },
-  { label: "Orders", href: "/orders", icon: ClipboardList },
+  {
+    label: "Ecommerce",
+    icon: ShoppingBag,
+    children: [
+      { label: "Banner", href: "/ecommerce/banners", icon: Image },
+      { label: "Orders", href: "/ecommerce/orders", icon: OrdersIcon },
+    ],
+  },
   {
     label: "Reports",
     icon: BarChart3,
@@ -432,7 +442,23 @@ function SidebarItem({
   }
 
   if (item.href) {
+    const isPOSStandaloneLink = item.href === "/pos";
     if (collapsedDesktop) {
+      if (isPOSStandaloneLink) {
+        return (
+          <a
+            href={item.href}
+            title={item.label}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              "flex items-center justify-center rounded-xl p-2.5 transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Icon className="size-[1.35rem] shrink-0" strokeWidth={1.75} />
+          </a>
+        );
+      }
       return (
         <Link
           href={item.href}
@@ -447,6 +473,22 @@ function SidebarItem({
         >
           <Icon className="size-[1.35rem] shrink-0" strokeWidth={1.75} />
         </Link>
+      );
+    }
+    if (isPOSStandaloneLink) {
+      return (
+        <a
+          href={item.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors text-foreground hover:bg-muted/80"
+          )}
+          style={{ paddingLeft: 12 + d * 12 }}
+        >
+          <Icon className="size-[1.125rem] shrink-0" strokeWidth={1.75} />
+          <span className="truncate">{item.label}</span>
+        </a>
       );
     }
     return (
@@ -527,7 +569,7 @@ export function Sidebar({
 
       <aside
         className={cn(
-          "fixed left-0 z-[55] flex w-[min(18rem,calc(100vw-2.5rem))] flex-col border-r border-border bg-card shadow-[4px_0_24px_-8px_rgba(0,0,0,0.08)]",
+          "sidebar-shell fixed left-0 z-[55] flex w-[min(18rem,calc(100vw-2.5rem))] flex-col border-r border-border bg-card shadow-[4px_0_24px_-8px_rgba(0,0,0,0.08)]",
           /* Mobile: under header (4rem / h-16), smooth horizontal slide */
           "top-16 h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] transition-[transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform",
           "lg:top-0 lg:z-50 lg:h-dvh lg:max-h-screen lg:will-change-auto lg:transition-[transform,width] lg:duration-200 lg:ease-out",
