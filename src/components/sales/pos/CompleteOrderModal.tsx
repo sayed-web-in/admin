@@ -179,10 +179,10 @@ export function CompleteOrderModal({
 
   const handleRowChange = (id: string, field: "accountId" | "amount", value: string) => {
     setPaymentRows((prev) => {
-      const nextRows = prev.map((r) => {
+      const nextRows: PaymentRow[] = prev.map((r): PaymentRow => {
         if (r.id !== id) return r;
         if (field === "accountId") return { ...r, accountId: value };
-        if (value === "") return { ...r, amount: "" };
+        if (value === "") return { ...r, amount: "" as const };
         return { ...r, amount: parseFloat(value) || 0 };
       });
 

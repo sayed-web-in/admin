@@ -113,7 +113,10 @@ export function POSPage() {
       effectiveUnitPrice = effectiveUnitPrice - discountValue;
     }
     effectiveUnitPrice = Math.max(0, effectiveUnitPrice);
-    const variant = sp.productVariant?.attributes?.map((a) => a.attributeValue.value).join(", ");
+    const variant = sp.productVariant?.attributes
+      ?.map((a) => a?.attributeValue?.value)
+      .filter((v): v is string => Boolean(v && v.trim()))
+      .join(", ");
     const normalizedSerials = Array.isArray(serialNumbers)
       ? Array.from(new Set(serialNumbers.map((s) => String(s).trim()).filter(Boolean)))
       : [];
@@ -198,18 +201,21 @@ export function POSPage() {
       return;
     }
     setCart((prev) =>
-      prev.map((i) => {
-        if (i.storeProductId !== id) return i;
-        const cappedQty = Math.min(qty, Math.max(0, i.stockAvailable || 0));
-        if (cappedQty <= 0) return { ...i, quantity: 0, serialNumbers: i.serialNumbers ? [] : undefined };
-        if (i.serialNumbers && i.serialNumbers.length > 0) {
-          if (cappedQty > i.quantity) return i;
-          const nextSerials = i.serialNumbers.slice(0, cappedQty);
-          return { ...i, quantity: nextSerials.length, serialNumbers: nextSerials };
-        }
-        return { ...i, quantity: cappedQty };
-      })
-    ).filter((i) => i.quantity > 0);
+      prev
+        .map((i) => {
+          if (i.storeProductId !== id) return i;
+          const cappedQty = Math.min(qty, Math.max(0, i.stockAvailable || 0));
+          if (cappedQty <= 0)
+            return { ...i, quantity: 0, serialNumbers: i.serialNumbers ? [] : undefined };
+          if (i.serialNumbers && i.serialNumbers.length > 0) {
+            if (cappedQty > i.quantity) return i;
+            const nextSerials = i.serialNumbers.slice(0, cappedQty);
+            return { ...i, quantity: nextSerials.length, serialNumbers: nextSerials };
+          }
+          return { ...i, quantity: cappedQty };
+        })
+        .filter((i) => i.quantity > 0)
+    );
   };
 
   const updateUnitPrice = (id: number, unitPrice: number) => {
