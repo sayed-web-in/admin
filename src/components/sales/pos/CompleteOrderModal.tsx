@@ -126,27 +126,6 @@ export function CompleteOrderModal({
     }
   }, [open, fetchAccounts]);
 
-  const defaultCashId = useMemo(() => {
-    const branchCash = accounts.find(
-      (a) =>
-        (a.accountType ?? "").toLowerCase() === "cash" &&
-        String((a as Record<string, unknown>)?.branchId ?? "") === String(branchId)
-    );
-    if (branchCash) return String(branchCash.id);
-    const any = accounts.find((a) => (a.accountType ?? "").toLowerCase() === "cash");
-    return any ? String(any.id) : "";
-  }, [accounts, branchId]);
-
-  // Auto-fill first row with default cash account
-  useEffect(() => {
-    if (!open || !defaultCashId) return;
-    setPaymentRows((prev) => {
-      if (!prev.length) return prev;
-      if (prev[0].accountId) return prev;
-      return [{ ...prev[0], accountId: defaultCashId }, ...prev.slice(1)];
-    });
-  }, [open, defaultCashId]);
-
   const handleRowChange = (id: string, field: "accountId" | "amount", value: string) => {
     setPaymentRows((prev) =>
       prev.map((r) => {
@@ -160,8 +139,8 @@ export function CompleteOrderModal({
   const handleConfirm = async () => {
     const primaryRow = paymentRows[0];
     const paymentMethod = primaryRow?.accountId
-      ? (accounts.find((a) => String(a.id) === primaryRow.accountId)?.accountType?.toLowerCase() ?? "cash")
-      : "cash";
+      ? (accounts.find((a) => String(a.id) === primaryRow.accountId)?.accountType?.toLowerCase() ?? "account")
+      : "account";
     await onConfirm({ paymentMethod, receivedAmount: totalReceived, payments: paymentRows, note });
   };
 

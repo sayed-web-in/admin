@@ -49,7 +49,9 @@ interface Subcategory {
   name: string;
   image?: string;
   description?: string;
+  displayOrder?: number;
   status: string;
+  categoryId?: number;
 }
 
 interface Category {
@@ -71,13 +73,17 @@ function normalizeSubcategoryRow(raw: {
   description?: string | null;
   image?: string | null;
   isActive?: boolean;
+  categoryId?: number;
+  displayOrder?: number | null;
 }): Subcategory {
   return {
     id: raw.id,
     name: raw.name,
     description: raw.description ?? undefined,
     image: raw.image ?? undefined,
+    displayOrder: raw.displayOrder ?? undefined,
     status: raw.isActive ? "active" : "inactive",
+    categoryId: raw.categoryId,
   };
 }
 
@@ -119,6 +125,14 @@ function normalizeCategory(raw: {
   };
 }
 
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === "object" && "message" in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return fallback;
+}
+
 const PAGE_SIZE = 20;
 
 export default function CategoriesPage() {
@@ -143,8 +157,10 @@ export default function CategoriesPage() {
 
   const [subModalOpen, setSubModalOpen] = useState(false);
   const [subParentId, setSubParentId] = useState<number | null>(null);
+  const [editingSub, setEditingSub] = useState<Subcategory | null>(null);
   const [subName, setSubName] = useState("");
   const [subDesc, setSubDesc] = useState("");
+  const [subOrder, setSubOrder] = useState(0);
   const [subStatus, setSubStatus] = useState(true);
   const [subImage, setSubImage] = useState<File | null>(null);
   const [subImagePreview, setSubImagePreview] = useState("");
@@ -218,11 +234,15 @@ export default function CategoriesPage() {
   }, [categories, meta.total]);
 
   const openAddCat = () => {
+    const nextDisplayOrder =
+      categories.length > 0
+        ? Math.max(...categories.map((c) => c.displayOrder ?? 0)) + 1
+        : 1;
     setEditingCat(null);
     setCatName("");
     setCatDesc("");
     setCatStatus(true);
-    setCatOrder(0);
+    setCatOrder(nextDisplayOrder);
     setCatBranches([]);
     setCatImage(null);
     setCatImagePreview("");
@@ -242,9 +262,15 @@ export default function CategoriesPage() {
   };
 
   const openAddSub = (categoryId: number) => {
+    const nextSubOrder =
+      viewSubs.length > 0
+        ? Math.max(...viewSubs.map((s) => s.displayOrder ?? 0)) + 1
+        : 1;
     setSubParentId(categoryId);
+    setEditingSub(null);
     setSubName("");
     setSubDesc("");
+    setSubOrder(nextSubOrder);
     setSubStatus(true);
     setSubImage(null);
     setSubImagePreview("");
@@ -264,11 +290,13 @@ export default function CategoriesPage() {
           description?: string | null;
           image?: string | null;
           isActive?: boolean;
+          categoryId?: number;
+          displayOrder?: number | null;
         }[];
       }>(`/categories/${cat.id}`);
       setViewSubs((d.subcategories ?? []).map(normalizeSubcategoryRow));
-    } catch (err: any) {
-      toast.error(err.message || "Failed to load subcategories");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Failed to load subcategories"));
       setViewModalOpen(false);
     } finally {
       setViewLoading(false);
@@ -290,7 +318,7 @@ export default function CategoriesPage() {
         name: catName,
         description: catDesc,
         isActive: catStatus,
-        displayOrder: catOrder,
+        displayOrder: Number.isFinite(catOrder) ? catOrder : 0,
         branchIds: catBranches,
         image: imageUrl,
       };
@@ -308,8 +336,8 @@ export default function CategoriesPage() {
       setCatModalOpen(false);
       void fetchCategories();
       toast.success(editingCat ? "Category updated" : "Category created");
-    } catch (err: any) {
-      toast.error(err.message || "Something went wrong");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Something went wrong"));
     } finally {
       setSaving(false);
     }
@@ -319,29 +347,81 @@ export default function CategoriesPage() {
     if (!subName.trim() || !subParentId) return;
     setSaving(true);
     try {
-      let imageUrl = "";
+      let imageUrl = editingSub?.image || "";
       if (subImage) {
         const fd = new FormData();
         fd.append("file", subImage);
         const res = await apiUpload("/upload/single", fd);
         imageUrl = res.url || res.path;
       }
-      await apiFetch(`/categories/${subParentId}/subcategories`, {
-        method: "POST",
-        body: JSON.stringify({
-          name: subName,
-          description: subDesc,
-          isActive: subStatus,
-          image: imageUrl,
-        }),
-      });
+      const payload = {
+        name: subName,
+        description: subDesc,
+        displayOrder: Number.isFinite(subOrder) ? subOrder : 0,
+        isActive: subStatus,
+        image: imageUrl,
+      };
+      if (editingSub) {
+        await apiFetch(`/subcategories/${editingSub.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiFetch(`/categories/${subParentId}/subcategories`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      }
       setSubModalOpen(false);
+      setEditingSub(null);
       void fetchCategories();
-      toast.success("Subcategory created");
-    } catch (err: any) {
-      toast.error(err.message || "Something went wrong");
+      if (subParentId) {
+        try {
+          const d = await apiFetch<{
+            subcategories?: {
+              id: number;
+              name: string;
+              description?: string | null;
+              image?: string | null;
+              isActive?: boolean;
+              categoryId?: number;
+              displayOrder?: number | null;
+            }[];
+          }>(`/categories/${subParentId}`);
+          setViewSubs((d.subcategories ?? []).map(normalizeSubcategoryRow));
+        } catch {
+          // ignore modal refresh failures; page list is already refreshed
+        }
+      }
+      toast.success(editingSub ? "Subcategory updated" : "Subcategory created");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Something went wrong"));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openEditSub = (sub: Subcategory) => {
+    setEditingSub(sub);
+    setSubParentId(sub.categoryId ?? null);
+    setSubName(sub.name);
+    setSubDesc(sub.description || "");
+    setSubOrder(sub.displayOrder ?? 0);
+    setSubStatus(sub.status === "active");
+    setSubImage(null);
+    setSubImagePreview(sub.image || "");
+    setSubModalOpen(true);
+  };
+
+  const handleDeleteSub = async (sub: Subcategory) => {
+    if (!confirm("Are you sure you want to delete this subcategory?")) return;
+    try {
+      await apiFetch(`/subcategories/${sub.id}`, { method: "DELETE" });
+      setViewSubs((prev) => prev.filter((x) => x.id !== sub.id));
+      void fetchCategories();
+      toast.success("Subcategory deleted");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Delete failed"));
     }
   };
 
@@ -352,8 +432,8 @@ export default function CategoriesPage() {
       if (categories.length <= 1 && page > 1) setPage((p) => Math.max(1, p - 1));
       else void fetchCategories();
       toast.success("Category deleted");
-    } catch (err: any) {
-      toast.error(err.message || "Delete failed");
+    } catch (err: unknown) {
+      toast.error(getErrorMessage(err, "Delete failed"));
     }
   };
 
@@ -644,21 +724,60 @@ export default function CategoriesPage() {
               <thead className="bg-muted/50 text-left">
                 <tr>
                   <th className="px-3 py-2 font-medium">#</th>
+                  <th className="px-3 py-2 font-medium">Img</th>
                   <th className="px-3 py-2 font-medium">Name</th>
+                  <th className="px-3 py-2 font-medium">Order</th>
                   <th className="px-3 py-2 font-medium hidden sm:table-cell">Description</th>
                   <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {viewSubs.map((s, idx) => (
                   <tr key={s.id} className="border-t border-border">
                     <td className="px-3 py-2 text-muted-foreground">{idx + 1}</td>
+                    <td className="px-3 py-2">
+                      {s.image ? (
+                        <img
+                          src={resolveMediaUrl(s.image)}
+                          alt={s.name}
+                          className="h-9 w-9 rounded-md border border-border/70 object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border/60 bg-muted/30 text-muted-foreground">
+                          <ImageIcon className="h-4 w-4" aria-hidden />
+                        </div>
+                      )}
+                    </td>
                     <td className="px-3 py-2 font-medium">{s.name}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{s.displayOrder ?? 0}</td>
                     <td className="px-3 py-2 text-muted-foreground line-clamp-2 max-w-[200px] hidden sm:table-cell">
                       {s.description || "—"}
                     </td>
                     <td className="px-3 py-2">
                       <StatusBadge status={s.status} />
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                          onClick={() => openEditSub(s)}
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1" aria-hidden />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-8"
+                          onClick={() => void handleDeleteSub(s)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" aria-hidden />
+                          Delete
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -672,8 +791,12 @@ export default function CategoriesPage() {
       <Modal
         open={subModalOpen}
         onOpenChange={setSubModalOpen}
-        title="Add Subcategory"
-        description="Add a subcategory to this category"
+        title={editingSub ? "Edit Subcategory" : "Add Subcategory"}
+        description={
+          editingSub
+            ? "Update subcategory details and image"
+            : "Add a subcategory to this category"
+        }
       >
         <div className="space-y-4">
           <div>
@@ -719,6 +842,15 @@ export default function CategoriesPage() {
             />
           </div>
           <div>
+            <label className="text-sm font-medium mb-1.5 block">Display Order</label>
+            <Input
+              type="number"
+              value={subOrder}
+              onChange={(e) => setSubOrder(Number(e.target.value))}
+              min={0}
+            />
+          </div>
+          <div>
             <label className="text-sm font-medium mb-1.5 block">Status</label>
             <InventoryStatusSwitch checked={subStatus} onCheckedChange={setSubStatus} />
           </div>
@@ -730,7 +862,7 @@ export default function CategoriesPage() {
               onClick={handleSaveSub}
               disabled={saving || !subName.trim()}
             >
-              {saving ? "Saving..." : "Create"}
+              {saving ? "Saving..." : editingSub ? "Update" : "Create"}
             </Button>
           </div>
         </div>

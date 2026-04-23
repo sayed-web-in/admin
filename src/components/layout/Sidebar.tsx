@@ -51,6 +51,9 @@ import {
   PanelLeft,
   PanelLeftClose,
   X,
+  CircleHelp,
+  Sparkles,
+  MapPin,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -150,6 +153,11 @@ const menuItems: MenuItem[] = [
     icon: ShoppingBag,
     children: [
       { label: "Banner", href: "/ecommerce/banners", icon: Image },
+      { label: "Short Features", href: "/ecommerce/short-features", icon: Sparkles },
+      { label: "Articles", href: "/ecommerce/articles", icon: FileText },
+      { label: "FAQ", href: "/ecommerce/faq", icon: CircleHelp },
+      { label: "Settings", href: "/ecommerce/settings", icon: Settings },
+      { label: "Locations", href: "/ecommerce/locations", icon: MapPin },
       { label: "Orders", href: "/ecommerce/orders", icon: OrdersIcon },
     ],
   },
