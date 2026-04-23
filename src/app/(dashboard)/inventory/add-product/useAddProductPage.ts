@@ -110,6 +110,10 @@ function mapApiProductToStoreRows(
     const purchaseCostPerUnit = firstBatch
       ? Number(firstBatch.purchaseCost ?? 0)
       : 0;
+    const hasSoldInAnyBatch = batches.some(
+      (b) => Number((b as { soldQty?: unknown }).soldQty ?? 0) > 0
+    );
+    const canEditPurchaseCost = batches.length === 1 && !hasSoldInAnyBatch;
     const serialNumbers: string[] = [];
     for (const b of batches) {
       const sns = (b.serialNumbers as { serial: string }[]) || [];
@@ -131,6 +135,7 @@ function mapApiProductToStoreRows(
       sellingType: String(sp.sellingType ?? "BOTH"),
       createdAt: String(sp.createdAt ?? ""),
       serialNumbers,
+      canEditPurchaseCost,
     });
   }
   return rows;
@@ -409,6 +414,25 @@ export function useAddProductPage() {
     toast.success("Form cleared");
   }, [isEditMode, editProductId, loadProductForEdit]);
 
+  const startNewProductSession = useCallback(() => {
+    const branchId = getSelectedBranch() ?? 0;
+    setForm(emptyFormState(branchId));
+    setDraftProductId(null);
+    setProductStatus(null);
+    setStoreRows([]);
+    setStoreModalOpen(false);
+    setEditStoreOpen(false);
+    setSelectedStoreRow(null);
+    setDeleteConfirmOpen(false);
+    setRowToDelete(null);
+    setSerialModalOpen(false);
+    setSerialModalRows([]);
+    setBatchModalOpen(false);
+    setBatchStoreProductId(null);
+    singleSkuAutoDoneRef.current = false;
+    router.replace("/inventory/add-product");
+  }, [router]);
+
   useEffect(() => {
     if (!form.categoryId) {
       setSubcategories([]);
@@ -634,7 +658,11 @@ export function useAddProductPage() {
           payload.discountValue = null;
         }
         const pc = parseFloat(data.purchaseCostPerUnit);
-        if (!Number.isNaN(pc) && data.purchaseCostPerUnit.trim() !== "") {
+        if (
+          selectedStoreRow.canEditPurchaseCost &&
+          !Number.isNaN(pc) &&
+          data.purchaseCostPerUnit.trim() !== ""
+        ) {
           payload.purchaseCostPerUnit = pc;
         }
         await apiFetch(`/products/store-products/${selectedStoreRow.storeProductId}`, {
@@ -713,6 +741,7 @@ export function useAddProductPage() {
     isSerialDisabled,
     saveProductInfo,
     resetForm,
+    startNewProductSession,
     refreshStoreRows,
     addVariant,
     removeVariant,

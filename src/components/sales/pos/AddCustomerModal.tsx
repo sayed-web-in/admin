@@ -6,6 +6,7 @@ import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import type { POSCustomer } from "@/components/sales/pos/CustomerPopover";
+import { toast } from "sonner";
 
 interface AddCustomerModalProps {
   open: boolean;
@@ -63,7 +64,9 @@ export function AddCustomerModal({
       onSuccess(created);
       close();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create customer");
+      const msg = err instanceof Error ? err.message : "Failed to create customer";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

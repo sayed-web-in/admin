@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
+import { toast } from "sonner";
 import { unwrapPaginated } from "@/lib/apiList";
 import {
   INVENTORY_CARD_SHELL,
@@ -98,12 +99,11 @@ export default function CustomersPage() {
   }, [debouncedSearch, tab]);
 
   const getCustomerDue = (c: Customer) => {
-    const advance = Number(c.totalAdvance || 0);
     const salesDue = (c.sales ?? []).reduce(
       (sum, s) => sum + Number(s.dueAmount || 0),
       0
     );
-    return Math.max(advance, salesDue);
+    return Math.max(0, salesDue);
   };
 
   const fetchCustomers = useCallback(async () => {
@@ -183,7 +183,7 @@ export default function CustomersPage() {
       setForm({ name: "", email: "", phone: "", address: "", division: "", district: "" });
       await Promise.all([fetchCustomers(), loadSummary()]);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Create failed");
+      toast.error(err instanceof Error ? err.message : "Create failed");
     } finally {
       setSaving(false);
     }

@@ -28,6 +28,7 @@ export interface StoreProductRow {
   sellingType: string;
   createdAt: string;
   serialNumbers: string[];
+  canEditPurchaseCost: boolean;
 }
 
 export interface ProductFormState {

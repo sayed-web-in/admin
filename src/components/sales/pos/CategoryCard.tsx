@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { Package } from "lucide-react";
+import { resolveMediaUrl } from "@/lib/media";
 
 interface CategoryCardProps {
   name: string;
@@ -12,6 +13,7 @@ interface CategoryCardProps {
 }
 
 export function CategoryCard({ name, imageSrc, active, sizeClass, onClick }: CategoryCardProps) {
+  const resolvedImageSrc = imageSrc ? resolveMediaUrl(imageSrc) : "";
   const btnBase =
     "flex flex-col items-center justify-center rounded-lg transition-all backdrop-blur-sm flex-shrink-0";
   const btnActive =
@@ -21,13 +23,14 @@ export function CategoryCard({ name, imageSrc, active, sizeClass, onClick }: Cat
 
   return (
     <button onClick={onClick} className={`${btnBase} ${active ? btnActive : btnInactive} ${sizeClass}`}>
-      {imageSrc ? (
+      {resolvedImageSrc ? (
         <Image
-          src={imageSrc}
+          src={resolvedImageSrc}
           alt={name}
           width={24}
           height={24}
           className={`w-6 h-6 rounded-lg object-cover mb-1 ${active ? "ring-2 ring-white/30" : ""}`}
+          unoptimized
         />
       ) : (
         <Package className={`w-6 h-6 mb-1 ${active ? "text-white" : "text-slate-900"}`} />

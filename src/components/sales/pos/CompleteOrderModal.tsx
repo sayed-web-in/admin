@@ -13,6 +13,14 @@ import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
 import type { POSCustomer } from "@/components/sales/pos/CustomerPopover";
+import { toast } from "sonner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface PosItem {
   storeProductId: number;
@@ -35,6 +43,9 @@ interface AccountOption {
   accountName?: string;
   accountType?: string;
   currentBalance?: number;
+  type?: string;
+  balance?: number;
+  isActive?: boolean;
 }
 
 interface PaymentRow {
@@ -65,8 +76,10 @@ interface CompleteOrderModalProps {
 
 function getAccountLabel(a: AccountOption) {
   const name = a.accountName ?? a.name ?? String(a.id);
-  const type = a.accountType ? ` (${a.accountType})` : "";
-  const bal = typeof a.currentBalance === "number" ? ` - ${formatPrice(a.currentBalance)}` : "";
+  const accountType = a.accountType ?? a.type;
+  const type = accountType ? ` (${accountType})` : "";
+  const balance = a.currentBalance ?? a.balance;
+  const bal = typeof balance === "number" ? ` - ${formatPrice(balance)}` : "";
   return `${name}${type}${bal}`;
 }
 
@@ -91,6 +104,26 @@ export function CompleteOrderModal({
   ]);
   const [note, setNote] = useState("");
 
+  const getRowAmount = (row: PaymentRow) =>
+    typeof row.amount === "number" ? row.amount : Number(row.amount) || 0;
+
+  const getAccountTypeById = (accountId: string) =>
+    String(
+      accounts.find((a) => String(a.id) === accountId)?.accountType ??
+        accounts.find((a) => String(a.id) === accountId)?.type ??
+        ""
+    ).toLowerCase();
+
+  const isCashType = (accountType: string) => accountType === "cash";
+  const isNonCashType = (accountType: string) =>
+    Boolean(accountType) &&
+    !isCashType(accountType) &&
+    (accountType.includes("bank") ||
+      accountType.includes("mobile") ||
+      accountType.includes("bkash") ||
+      accountType.includes("nagad") ||
+      accountType.includes("card"));
+
   const totalReceived = paymentRows.reduce(
     (s, r) => s + (typeof r.amount === "number" ? r.amount : Number(r.amount) || 0),
     0
@@ -108,9 +141,12 @@ export function CompleteOrderModal({
   const fetchAccounts = useCallback(async () => {
     setAccountsLoading(true);
     try {
-      const res = await apiFetch<AccountOption[] | { data?: AccountOption[] }>("/accounts/selection");
+      const res = await apiFetch<AccountOption[] | { data?: AccountOption[] }>("/finance/accounts");
       const list = Array.isArray(res) ? res : res.data || [];
-      setAccounts(Array.isArray(list) ? list : []);
+      const normalized = Array.isArray(list)
+        ? list.filter((a) => a && a.id != null && (a.isActive ?? true))
+        : [];
+      setAccounts(normalized);
     } catch {
       setAccounts([]);
     } finally {
@@ -126,17 +162,72 @@ export function CompleteOrderModal({
     }
   }, [open, fetchAccounts]);
 
+  useEffect(() => {
+    if (!open || accountsLoading || accounts.length === 0) return;
+    const cashAccount =
+      accounts.find((a) => String(a.accountType ?? a.type ?? "").toLowerCase() === "cash") ||
+      accounts[0];
+    if (!cashAccount) return;
+
+    setPaymentRows((prev) => {
+      if (!prev.length) return [{ id: String(Date.now()), accountId: String(cashAccount.id), amount: "" }];
+      const first = prev[0];
+      if (first.accountId) return prev;
+      return [{ ...first, accountId: String(cashAccount.id) }, ...prev.slice(1)];
+    });
+  }, [open, accounts, accountsLoading]);
+
   const handleRowChange = (id: string, field: "accountId" | "amount", value: string) => {
-    setPaymentRows((prev) =>
-      prev.map((r) => {
+    setPaymentRows((prev) => {
+      const nextRows = prev.map((r) => {
         if (r.id !== id) return r;
         if (field === "accountId") return { ...r, accountId: value };
-        return { ...r, amount: value === "" ? "" : parseFloat(value) || 0 };
-      })
-    );
+        if (value === "") return { ...r, amount: "" };
+        return { ...r, amount: parseFloat(value) || 0 };
+      });
+
+      const changedRow = nextRows.find((r) => r.id === id);
+      if (!changedRow) return prev;
+
+      const changedType = getAccountTypeById(changedRow.accountId);
+      const changedIsCash = isCashType(changedType);
+      const changedAmount = getRowAmount(changedRow);
+
+      if (!changedIsCash && changedAmount > grandTotal) {
+        toast.error(
+          `Online/Bank account cannot receive more than ${formatPrice(grandTotal)}.`
+        );
+        return prev;
+      }
+
+      const hasAnyNonCash = nextRows.some((r) => {
+        const t = getAccountTypeById(r.accountId);
+        return isNonCashType(t) && getRowAmount(r) > 0;
+      });
+      const total = nextRows.reduce((sum, r) => sum + getRowAmount(r), 0);
+
+      if (hasAnyNonCash && total > grandTotal) {
+        toast.error(
+          `Bank/Mobile payment selected, total receive cannot exceed ${formatPrice(grandTotal)}.`
+        );
+        return prev;
+      }
+
+      return nextRows;
+    });
   };
 
   const handleConfirm = async () => {
+    const hasAnyNonCash = paymentRows.some((r) => {
+      const t = getAccountTypeById(r.accountId);
+      return isNonCashType(t) && getRowAmount(r) > 0;
+    });
+    if (hasAnyNonCash && totalReceived > grandTotal) {
+      toast.error(
+        `When bank/mobile account is used, total receive cannot exceed ${formatPrice(grandTotal)}.`
+      );
+      return;
+    }
     const primaryRow = paymentRows[0];
     const paymentMethod = primaryRow?.accountId
       ? (accounts.find((a) => String(a.id) === primaryRow.accountId)?.accountType?.toLowerCase() ?? "account")
@@ -257,34 +348,52 @@ export function CompleteOrderModal({
                 {paymentRows.map((row, index) => {
                   const usedIds = paymentRows.filter((r) => r.id !== row.id && r.accountId).map((r) => r.accountId);
                   const available = accounts.filter((a) => !usedIds.includes(String(a.id)));
+                  const rowType = getAccountTypeById(row.accountId);
+                  const rowIsCash = isCashType(rowType);
+                  const hasOtherNonCash = paymentRows.some((r) => {
+                    if (r.id === row.id) return false;
+                    const t = getAccountTypeById(r.accountId);
+                    return isNonCashType(t) && getRowAmount(r) > 0;
+                  });
+                  const shouldCapByGrandTotal = !rowIsCash || hasOtherNonCash;
+                  const otherRowsTotal = paymentRows
+                    .filter((r) => r.id !== row.id)
+                    .reduce((sum, r) => sum + getRowAmount(r), 0);
+                  const maxForRow = Math.max(0, grandTotal - otherRowsTotal);
                   return (
                     <div key={row.id} className="flex items-end gap-2">
                       <div className="flex-1 min-w-0">
                         <label className="block text-[10px] font-semibold text-slate-500 mb-1">
                           Account {index + 1}
                         </label>
-                        <select
+                        <Select
                           value={row.accountId}
-                          onChange={(e) => handleRowChange(row.id, "accountId", e.target.value)}
-                          className="w-full h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                          onValueChange={(value) => handleRowChange(row.id, "accountId", value)}
                         >
-                          <option value="">Select account</option>
-                          {accountsLoading ? (
-                            <option disabled>Loading…</option>
-                          ) : (
-                            available.map((a) => (
-                              <option key={a.id} value={String(a.id)}>
-                                {getAccountLabel(a)}
-                              </option>
-                            ))
-                          )}
-                        </select>
+                          <SelectTrigger className="h-8 w-full rounded-lg border-slate-300 bg-white px-2 text-xs text-slate-900">
+                            <SelectValue placeholder={accountsLoading ? "Loading..." : "Select account"} />
+                          </SelectTrigger>
+                          <SelectContent position="popper" side="bottom" align="start">
+                            {!accountsLoading && available.length === 0 ? (
+                              <SelectItem value="__no_accounts__" disabled>
+                                No accounts available
+                              </SelectItem>
+                            ) : (
+                              available.map((a) => (
+                                <SelectItem key={a.id} value={String(a.id)}>
+                                  {getAccountLabel(a)}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="w-28 shrink-0">
                         <label className="block text-[10px] font-semibold text-slate-500 mb-1">Amount</label>
                         <input
                           type="number"
                           min={0}
+                          max={shouldCapByGrandTotal ? maxForRow : undefined}
                           value={row.amount === "" ? "" : row.amount}
                           disabled={!row.accountId}
                           onChange={(e) => handleRowChange(row.id, "amount", e.target.value)}

@@ -88,11 +88,13 @@ function normalizeStoreRow(sp: {
     type: string;
     sku?: string | null;
     images?: { url: string }[];
+    variants?: { image?: string | null }[];
     brand?: { name: string } | null;
     category?: { name: string } | null;
   };
   productVariant?: {
     sku: string;
+    image?: string | null;
     attributes?: { attributeValue?: { value: string } | null }[];
   } | null;
 }): StoreProduct {
@@ -115,7 +117,11 @@ function normalizeStoreRow(sp: {
     id: sp.id,
     productId: sp.productId,
     productName: sp.product.name,
-    image: sp.product.images?.[0]?.url,
+    image:
+      sp.product.images?.[0]?.url ||
+      pv?.image ||
+      sp.product.variants?.[0]?.image ||
+      undefined,
     brandName: sp.product.brand?.name,
     categoryName: sp.product.category?.name,
     type: sp.product.type,
@@ -140,11 +146,12 @@ function normalizeDraftRow(p: {
   category?: { name: string } | null;
   brand?: { name: string } | null;
   images?: { url: string }[];
+  variants?: { image?: string | null }[];
 }): DraftProduct {
   return {
     id: p.id,
     name: p.name,
-    image: p.images?.[0]?.url,
+    image: p.images?.[0]?.url || p.variants?.[0]?.image || undefined,
     type: p.type,
     sku: p.sku ?? undefined,
     categoryName: p.category?.name,

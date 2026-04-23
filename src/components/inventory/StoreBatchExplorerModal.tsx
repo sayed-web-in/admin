@@ -23,18 +23,16 @@ export function StoreBatchExplorerModal({
   const [detailBatchId, setDetailBatchId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!open) {
+    // When only the list dialog closes (e.g. while opening details),
+    // keep detail modal state intact.
+    if (!open && !detailOpen) {
       setDetailOpen(false);
       setDetailBatchId(null);
     }
-  }, [open]);
+  }, [open, detailOpen]);
 
   const handleListOpenChange = useCallback(
     (next: boolean) => {
-      if (!next) {
-        setDetailOpen(false);
-        setDetailBatchId(null);
-      }
       onOpenChange(next);
     },
     [onOpenChange]

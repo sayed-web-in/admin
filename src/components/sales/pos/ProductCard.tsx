@@ -3,10 +3,12 @@
 import Image from "next/image";
 import { Package } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
+import { resolveMediaUrl } from "@/lib/media";
 
 export interface POSProduct {
   id: number;
   name: string;
+  sku?: string;
   images: { url: string }[];
   sellerBrand?: { name?: string };
   brand?: { name?: string };
@@ -14,26 +16,29 @@ export interface POSProduct {
     id: number;
     sellingPrice: number;
     quantity: number;
+    discountType?: "fixed" | "percentage" | "FIXED" | "PERCENTAGE";
+    discountValue?: number;
     productVariant?: {
-      discountType?: "fixed" | "percentage";
-      discountValue?: number;
-      attributes: { attributeValue: { value: string } }[];
+      sku?: string;
+      image?: string;
+      attributes?: { attributeValue?: { value?: string } }[];
     };
   }[];
+  hasImei?: boolean;
 }
 
 interface ProductCardProps {
   product: POSProduct;
-  onAdd: (product: POSProduct) => void;
+  storeProduct: POSProduct["storeProducts"][number];
+  onAdd: (product: POSProduct, storeProductId: number) => void;
 }
 
-export function ProductCard({ product, onAdd }: ProductCardProps) {
-  const storeProduct = product.storeProducts?.[0];
+export function ProductCard({ product, storeProduct, onAdd }: ProductCardProps) {
   const stockQuantity = Number(storeProduct?.quantity || 0);
   const isOutOfStock = stockQuantity <= 0;
   const sellingPrice = Number(storeProduct?.sellingPrice || 0);
-  const discountType = storeProduct?.productVariant?.discountType;
-  const discountValue = Number(storeProduct?.productVariant?.discountValue || 0);
+  const discountType = String(storeProduct?.discountType || "").toLowerCase();
+  const discountValue = Number(storeProduct?.discountValue || 0);
 
   let finalPrice = sellingPrice;
   if (discountType === "percentage" && discountValue > 0) {
@@ -49,14 +54,18 @@ export function ProductCard({ product, onAdd }: ProductCardProps) {
       .filter((v): v is string => Boolean(v && v.trim()))
       .join(" + ") || "";
 
-  const productImage = product.images?.[0]?.url;
+  const productImage = storeProduct?.productVariant?.image
+    ? resolveMediaUrl(storeProduct.productVariant.image)
+    : product.images?.[0]?.url
+      ? resolveMediaUrl(product.images[0].url)
+      : "";
   const brandName = product.sellerBrand?.name || product.brand?.name || "";
 
   return (
     <button
-      onClick={() => !isOutOfStock && onAdd(product)}
+      onClick={() => !isOutOfStock && onAdd(product, storeProduct.id)}
       className={`p-2.5 lg:p-4 rounded-xl border border-slate-200 bg-white shadow-md transition-all text-left ${
-        isOutOfStock ? "opacity-60 cursor-not-allowed" : "hover:shadow-lg hover:border-indigo-300"
+        isOutOfStock ? "opacity-60 cursor-not-allowed" : "hover:shadow-lg"
       }`}
     >
       <div className="relative w-full aspect-square lg:h-48 lg:aspect-auto mb-2 lg:mb-3 rounded-lg overflow-hidden bg-slate-100">

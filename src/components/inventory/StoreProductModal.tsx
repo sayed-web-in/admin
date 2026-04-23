@@ -84,6 +84,7 @@ export function StoreProductModal({
 }: StoreProductModalProps) {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [serverVariants, setServerVariants] = useState<VariantEntry[] | null>(null);
 
   const [branchId, setBranchId] = useState(0);
   const [variantId, setVariantId] = useState("");
@@ -111,6 +112,11 @@ export function StoreProductModal({
     Partial<Record<string, string>>
   >({});
   const [saving, setSaving] = useState(false);
+
+  const variantsForStore = useMemo(
+    () => (serverVariants && serverVariants.length > 0 ? serverVariants : variants),
+    [serverVariants, variants]
+  );
 
   const supplierItems = useMemo<SupplierCombo[]>(
     () => suppliers.map((s) => ({ value: s.id, label: s.name })),
@@ -143,6 +149,7 @@ export function StoreProductModal({
   useEffect(() => {
     if (!open) return;
     resetFormFields();
+    setServerVariants(null);
     apiFetch<unknown>("/branches")
       .then((res) => {
         const list = Array.isArray(res) ? (res as Branch[]) : [];
@@ -163,6 +170,47 @@ export function StoreProductModal({
       })
       .catch(() => setSuppliers([]));
   }, [open, resetFormFields]);
+
+  useEffect(() => {
+    if (!open || productType !== "VARIABLE" || !productId) return;
+    apiFetch<Record<string, unknown>>(`/products/${productId}`)
+      .then((res) => {
+        const payload =
+          res && typeof res === "object" && res.data && typeof res.data === "object"
+            ? (res.data as Record<string, unknown>)
+            : res;
+        const apiVariants = Array.isArray(payload.variants)
+          ? (payload.variants as Record<string, unknown>[])
+          : [];
+        const mapped: VariantEntry[] = apiVariants
+          .filter((v) => !v.deletedAt)
+          .map((v) => {
+            const attrs = Array.isArray(v.attributes)
+              ? (v.attributes as Record<string, unknown>[])
+              : [];
+            return {
+              id: String(v.id ?? ""),
+              sku: String(v.sku ?? ""),
+              image: typeof v.image === "string" ? v.image : undefined,
+              createdAt: v.createdAt ? String(v.createdAt) : undefined,
+              attributes: attrs.map((a) => {
+                const av = (a.attributeValue || {}) as Record<string, unknown>;
+                const attr = (av.attribute || {}) as Record<string, unknown>;
+                return {
+                  attributeId: Number(attr.id ?? 0),
+                  attributeName: String(attr.name ?? ""),
+                  valueId: Number(av.id ?? 0),
+                  valueName: String(av.value ?? ""),
+                };
+              }),
+            };
+          });
+        setServerVariants(mapped);
+      })
+      .catch(() => {
+        setServerVariants(null);
+      });
+  }, [open, productType, productId]);
 
   useEffect(() => {
     if (!open || branches.length === 0) return;
@@ -322,8 +370,8 @@ export function StoreProductModal({
     let productVariantId: number | undefined;
     if (productType === "VARIABLE") {
       productVariantId = parseVariantDbId(variantId)!;
-    } else if (variants[0] && isVariantSavedForStore(variants[0])) {
-      productVariantId = parseInt(String(variants[0].id), 10);
+    } else if (variantsForStore[0] && isVariantSavedForStore(variantsForStore[0])) {
+      productVariantId = parseInt(String(variantsForStore[0].id), 10);
     }
 
     setSaving(true);
@@ -437,7 +485,7 @@ export function StoreProductModal({
           )}
         </div>
 
-        {productType === "VARIABLE" && variants.length > 0 && (
+        {productType === "VARIABLE" && variantsForStore.length > 0 && (
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
               Variant <span className="text-red-500">*</span>
@@ -453,7 +501,7 @@ export function StoreProductModal({
               </SelectTrigger>
               <SelectContent position="popper" className="z-[200] rounded-xl">
                 <SelectGroup>
-                  {variants.map((v, idx) => {
+                  {variantsForStore.map((v, idx) => {
                     const val = variantOptionValue(v, idx);
                     const saved = isVariantSavedForStore(v);
                     const dbId = saved ? parseInt(String(v.id), 10) : null;

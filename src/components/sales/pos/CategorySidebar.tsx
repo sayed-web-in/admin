@@ -87,7 +87,11 @@ export function POSCategorySidebar({
           `/categories?${params.toString()}`
         );
         const list = Array.isArray(res) ? res : res.data || res.categories || [];
-        setCategories(list.filter((cat) => !cat.status || cat.status === "active"));
+        setCategories(
+          list.filter(
+            (cat) => !cat.status || String(cat.status).toLowerCase() === "active"
+          )
+        );
       } catch {
         setCategories([]);
       } finally {

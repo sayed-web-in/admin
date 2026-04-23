@@ -10,7 +10,6 @@ import {
   Pencil,
   ImageIcon,
   FileText,
-  RotateCcw,
   Sparkles,
   Eye,
   X,
@@ -71,6 +70,7 @@ function formatStoreDiscount(discountType: string, discountValue: number) {
 
 const cardShell =
   "overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm ring-1 ring-black/[0.03] dark:ring-white/[0.06]";
+const basicFieldClass = "border-border/90 bg-muted/55 dark:bg-muted/35";
 
 function SectionHeader({
   icon: Icon,
@@ -167,7 +167,7 @@ function AddProductPageContent() {
     batchStoreProductId,
     setBatchStoreProductId,
     refreshStoreRows,
-    resetForm,
+    startNewProductSession,
     isTab1Valid,
     router,
   } = useAddProductPage();
@@ -395,11 +395,12 @@ function AddProductPageContent() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => resetForm()}
+              onClick={startNewProductSession}
               className="h-10 w-full gap-1.5 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto"
+              title="Add New Product"
             >
-              <RotateCcw className="h-4 w-4 shrink-0" />
-              Reset
+              <Plus className="h-4 w-4 shrink-0" />
+              Add New
             </Button>
           </div>
         </div>
@@ -424,7 +425,7 @@ function AddProductPageContent() {
                   }
                   disabled={isProductTypeDisabled}
                 >
-                  <SelectTrigger className="h-10 w-full rounded-xl">
+                  <SelectTrigger className={`h-10 w-full rounded-xl ${basicFieldClass}`}>
                     <SelectValue placeholder="Select product type" />
                   </SelectTrigger>
                   <SelectContent position="popper" side="bottom" align="start">
@@ -452,6 +453,7 @@ function AddProductPageContent() {
                   isItemEqualToValue={itemEqual}
                 >
                   <ComboboxInput
+                    className={basicFieldClass}
                     placeholder={
                       form.branchId
                         ? "Search or select category…"
@@ -489,6 +491,7 @@ function AddProductPageContent() {
                   isItemEqualToValue={itemEqual}
                 >
                   <ComboboxInput
+                    className={basicFieldClass}
                     placeholder="Search or select subcategory…"
                     showClear={form.subcategoryId > 0}
                     disabled={!form.categoryId}
@@ -516,6 +519,7 @@ function AddProductPageContent() {
                   isItemEqualToValue={itemEqual}
                 >
                   <ComboboxInput
+                    className={basicFieldClass}
                     placeholder="Search or select brand…"
                     showClear={form.brandId > 0}
                   />
@@ -542,6 +546,7 @@ function AddProductPageContent() {
                   isItemEqualToValue={itemEqual}
                 >
                   <ComboboxInput
+                    className={basicFieldClass}
                     placeholder="Search or select unit…"
                     showClear={form.unitId > 0}
                   />
@@ -570,7 +575,7 @@ function AddProductPageContent() {
                     setField("taxRateId", val === "none" ? 0 : Number(val))
                   }
                 >
-                  <SelectTrigger className="h-10 w-full rounded-xl">
+                  <SelectTrigger className={`h-10 w-full rounded-xl ${basicFieldClass}`}>
                     <SelectValue placeholder="No tax" />
                   </SelectTrigger>
                   <SelectContent position="popper" side="bottom" align="start">
@@ -593,6 +598,7 @@ function AddProductPageContent() {
                   value={form.name}
                   onChange={(e) => setField("name", e.target.value)}
                   placeholder="Product name"
+                  className={basicFieldClass}
                 />
               </div>
               {form.productType === "single" && (
@@ -607,7 +613,7 @@ function AddProductPageContent() {
                         value={form.sku}
                         onChange={(e) => setField("sku", e.target.value)}
                         placeholder="Enter SKU"
-                        className="min-w-0 flex-1 font-mono"
+                        className={`min-w-0 flex-1 font-mono ${basicFieldClass}`}
                       />
                     ) : (
                       <div className="flex min-h-[42px] min-w-0 flex-1 items-center rounded-xl border border-border/70 bg-transparent px-3 font-mono text-sm text-foreground">
@@ -654,7 +660,7 @@ function AddProductPageContent() {
                   }
                   disabled={isSerialDisabled}
                 >
-                  <SelectTrigger className="h-10 w-full rounded-xl">
+                  <SelectTrigger className={`h-10 w-full rounded-xl ${basicFieldClass}`}>
                     <SelectValue placeholder="Select option" />
                   </SelectTrigger>
                   <SelectContent position="popper" side="bottom" align="start">
@@ -1239,6 +1245,7 @@ function AddProductPageContent() {
           }
         }}
         storeProduct={selectedStoreRow}
+        canEditPurchaseCost={selectedStoreRow?.canEditPurchaseCost ?? false}
         loading={actionLoading}
       />
 

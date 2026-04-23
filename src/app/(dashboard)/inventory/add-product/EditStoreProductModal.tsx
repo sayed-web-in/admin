@@ -22,6 +22,7 @@ interface EditStoreProductModalProps {
   onSubmit: (data: EditStoreProductFormData) => void;
   onDelete: () => void;
   storeProduct: StoreProductRow | null;
+  canEditPurchaseCost?: boolean;
   loading?: boolean;
 }
 
@@ -46,6 +47,7 @@ export function EditStoreProductModal({
   onSubmit,
   onDelete,
   storeProduct,
+  canEditPurchaseCost = false,
   loading = false,
 }: EditStoreProductModalProps) {
   const [form, setForm] = useState<EditStoreProductFormData>({
@@ -154,17 +156,21 @@ export function EditStoreProductModal({
             Purchase cost per unit (average)
           </label>
           <p className="mb-1.5 text-xs text-muted-foreground">
-            From purchases and stock. Adjust via purchase or stock where your
-            workflow allows.
+            {canEditPurchaseCost
+              ? "Initial stock only: you can edit this before any sale."
+              : "Locked when multiple batches exist or any sale has happened."}
           </p>
           <Input
             type="text"
             inputMode="decimal"
             value={form.purchaseCostPerUnit}
-            disabled
-            readOnly
-            aria-readonly
-            className="rounded-xl cursor-not-allowed opacity-90"
+            disabled={loading || !canEditPurchaseCost}
+            readOnly={!canEditPurchaseCost}
+            aria-readonly={!canEditPurchaseCost}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, purchaseCostPerUnit: e.target.value }))
+            }
+            className={`rounded-xl ${canEditPurchaseCost ? "" : "cursor-not-allowed opacity-90"}`}
           />
         </div>
 

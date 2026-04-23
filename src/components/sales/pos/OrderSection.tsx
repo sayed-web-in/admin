@@ -19,6 +19,10 @@ interface PosItem {
   price: number;
   quantity: number;
   variant?: string;
+  serialNumbers?: string[];
+  batchNumber?: string;
+  batchNumbers?: string[];
+  serialBatchMap?: Record<string, string>;
 }
 
 interface OrderSectionProps {
@@ -38,7 +42,12 @@ interface OrderSectionProps {
   onAddService: (service: { id: number; name: string; price: number }) => void;
   onRemoveService: (serviceId: number) => void;
   onPayLater: (note: string) => Promise<void>;
-  onComplete: (opts: { paymentMethod: string; receivedAmount: number; note: string }) => Promise<void>;
+  onComplete: (opts: {
+    paymentMethod: string;
+    receivedAmount: number;
+    payments?: Array<{ id: string; accountId: string; amount: number | "" }>;
+    note: string;
+  }) => Promise<boolean>;
   onEditUnitPrice: (id: number, price: number) => void;
 }
 
@@ -245,8 +254,8 @@ export function OrderSection({
         loading={loading}
         onOpenChange={setShowCompleteModal}
         onConfirm={async (opts) => {
-          await onComplete(opts);
-          setShowCompleteModal(false);
+          const ok = await onComplete(opts);
+          if (ok) setShowCompleteModal(false);
         }}
       />
 

@@ -25,7 +25,6 @@ import { FilterBar } from "@/components/common/FilterBar";
 import { DataTable } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { InventoryTablePagination } from "@/components/inventory/InventoryTablePagination";
-import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -79,8 +78,6 @@ export default function SalesHistoryPage() {
     todaySales: 0,
     todayRevenue: 0,
   });
-  const [viewModal, setViewModal] = useState(false);
-  const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const branchId = getSelectedBranch();
 
   useEffect(() => {
@@ -160,14 +157,8 @@ export default function SalesHistoryPage() {
     void Promise.all([fetchSales(), loadSummary()]);
   };
 
-  const openView = async (sale: Sale) => {
-    try {
-      const full = await apiFetch<Sale>(`/sales/${sale.id}`);
-      setSelectedSale(full);
-    } catch {
-      setSelectedSale(sale);
-    }
-    setViewModal(true);
+  const openView = (sale: Sale) => {
+    router.push(`/sales/history/${sale.id}`);
   };
 
   const itemCountCell = (item: Sale) =>
@@ -239,9 +230,14 @@ export default function SalesHistoryPage() {
       key: "actions",
       label: "Actions",
       render: (item: Sale) => (
-        <Button variant="ghost" size="sm" onClick={() => openView(item)}>
-          <Eye size={14} />
-        </Button>
+        <button
+          type="button"
+          onClick={() => openView(item)}
+          className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 hover:border-indigo-300 transition-colors"
+          title="View details"
+        >
+          <Eye size={15} />
+        </button>
       ),
     },
   ];
@@ -350,131 +346,6 @@ export default function SalesHistoryPage() {
         </section>
       </div>
 
-      <Modal
-        open={viewModal}
-        onOpenChange={setViewModal}
-        title="Sale Details"
-        className="max-w-2xl"
-      >
-        {selectedSale && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-              <div>
-                <p className="text-muted-foreground">Invoice</p>
-                <p className="font-medium">{selectedSale.invoiceNumber}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Customer</p>
-                <p className="font-medium">
-                  {selectedSale.customer?.name || "Walking Customer"}
-                </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Phone</p>
-                <p className="font-medium">{selectedSale.customer?.phone || "—"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Date</p>
-                <p className="font-medium">{formatDate(selectedSale.createdAt)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Method</p>
-                <p className="font-medium capitalize">
-                  {selectedSale.paymentMethod?.replace("_", " ")}
-                </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Status</p>
-                <StatusBadge status={selectedSale.status} />
-              </div>
-            </div>
-
-            {selectedSale.items && selectedSale.items.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-sm font-semibold">Items</h4>
-                <div className="overflow-hidden rounded-lg border border-border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-muted/50">
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
-                          Product
-                        </th>
-                        <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">
-                          Qty
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">
-                          Price
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">
-                          Total
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {selectedSale.items.map((item) => (
-                        <tr key={item.id}>
-                          <td className="px-3 py-2">
-                            <p>{item.storeProduct?.product?.name || "Product"}</p>
-                            {item.serialNumbers && item.serialNumbers.length > 0 && (
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                SN: {item.serialNumbers.join(", ")}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-center">{item.quantity}</td>
-                          <td className="px-3 py-2 text-right">
-                            {formatPrice(item.unitPrice)}
-                          </td>
-                          <td className="px-3 py-2 text-right font-medium">
-                            {formatPrice(item.unitPrice * item.quantity)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-1 rounded-lg bg-muted/50 p-3 text-sm">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>{formatPrice(Number(selectedSale.totalAmount))}</span>
-              </div>
-              {Number(selectedSale.discount) > 0 && (
-                <div className="flex justify-between text-red-600">
-                  <span>Discount</span>
-                  <span>-{formatPrice(Number(selectedSale.discount))}</span>
-                </div>
-              )}
-              <div className="mt-1 flex justify-between border-t border-border pt-1 font-bold">
-                <span>Grand Total</span>
-                <span className="text-primary">
-                  {formatPrice(Number(selectedSale.grandTotal))}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Paid</span>
-                <span className="text-green-600">
-                  {formatPrice(Number(selectedSale.paidAmount || 0))}
-                </span>
-              </div>
-              {Number(selectedSale.changeAmount) > 0 && (
-                <div className="flex justify-between">
-                  <span>Change</span>
-                  <span>{formatPrice(Number(selectedSale.changeAmount))}</span>
-                </div>
-              )}
-              {Number(selectedSale.dueAmount) > 0 && (
-                <div className="flex justify-between font-medium text-red-600">
-                  <span>Due</span>
-                  <span>{formatPrice(Number(selectedSale.dueAmount))}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }
