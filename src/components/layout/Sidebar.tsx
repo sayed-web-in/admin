@@ -57,6 +57,24 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
+
+const ECOMMERCE_MENU_LABEL = "Ecommerce";
+const ECOMMERCE_ORDERS_HREF = "/ecommerce/orders";
+
+function EcommercePendingBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex size-3.5 shrink-0 items-center justify-center rounded-full bg-red-500 text-[8px] font-extrabold leading-none text-white shadow-sm ring-2 ring-card",
+        className
+      )}
+      title="Pending e-commerce orders"
+    >
+      !
+    </span>
+  );
+}
 
 export interface MenuItem {
   label: string;
@@ -229,28 +247,33 @@ function FlyoutLinks({
   pathname,
   depth,
   onPick,
+  ecommercePending,
 }: {
   item: MenuItem;
   pathname: string;
   depth?: number;
   onPick: () => void;
+  ecommercePending?: boolean;
 }) {
   const pad = 8 + (depth ?? 0) * 10;
   if (item.href && (!item.children || item.children.length === 0)) {
     const active = pathActive(pathname, item.href);
+    const showPending =
+      Boolean(ecommercePending) && item.href === ECOMMERCE_ORDERS_HREF;
     return (
       <Link
         href={item.href}
         onClick={onPick}
         className={cn(
-          "block rounded-lg py-2 text-sm transition-colors",
+          "flex items-center gap-2 rounded-lg py-2 text-sm transition-colors",
           active
             ? "bg-primary/10 font-medium text-primary"
             : "text-foreground hover:bg-muted"
         )}
         style={{ paddingLeft: pad, paddingRight: 12 }}
       >
-        {item.label}
+        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        {showPending && <EcommercePendingBadge className="mr-0.5" />}
       </Link>
     );
   }
@@ -271,6 +294,7 @@ function FlyoutLinks({
               pathname={pathname}
               depth={(depth ?? 0) + 1}
               onPick={onPick}
+              ecommercePending={ecommercePending}
             />
           ))}
         </div>
@@ -287,6 +311,7 @@ function CollapsedFlyout({
   pathname,
   onClose,
   onPick,
+  ecommercePending,
 }: {
   open: boolean;
   anchor: HTMLElement | null;
@@ -294,6 +319,7 @@ function CollapsedFlyout({
   pathname: string;
   onClose: () => void;
   onPick: () => void;
+  ecommercePending?: boolean;
 }) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
 
@@ -333,7 +359,13 @@ function CollapsedFlyout({
         </div>
         <div className="p-1.5">
           {item.children?.map((c) => (
-            <FlyoutLinks key={c.label} item={c} pathname={pathname} onPick={onPick} />
+            <FlyoutLinks
+              key={c.label}
+              item={c}
+              pathname={pathname}
+              onPick={onPick}
+              ecommercePending={ecommercePending}
+            />
           ))}
         </div>
       </div>
@@ -350,6 +382,7 @@ function SidebarItem({
   onMobileNav,
   flyout,
   setFlyout,
+  ecommercePending,
 }: {
   item: MenuItem;
   depth?: number;
@@ -358,6 +391,7 @@ function SidebarItem({
   onMobileNav?: () => void;
   flyout: { key: string; anchor: HTMLElement } | null;
   setFlyout: (v: { key: string; anchor: HTMLElement } | null) => void;
+  ecommercePending?: boolean;
 }) {
   const d = depth ?? 0;
   const [open, setOpen] = useState(false);
@@ -374,6 +408,8 @@ function SidebarItem({
   }, [closeFlyout, onMobileNav]);
 
   const flyoutOpen = flyout?.key === item.label;
+  const showEcommercePending =
+    Boolean(ecommercePending) && item.label === ECOMMERCE_MENU_LABEL;
 
   if (hasChildren && collapsedDesktop) {
     return (
@@ -387,13 +423,16 @@ function SidebarItem({
             else setFlyout({ key: item.label, anchor: e.currentTarget });
           }}
           className={cn(
-            "flex w-full items-center justify-center rounded-xl p-2.5 transition-colors",
+            "relative flex w-full items-center justify-center rounded-xl p-2.5 transition-colors",
             childActive
               ? "bg-primary/12 text-primary shadow-sm ring-1 ring-primary/20"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           )}
         >
           <Icon className="size-[1.35rem] shrink-0" strokeWidth={1.75} />
+          {showEcommercePending && (
+            <EcommercePendingBadge className="absolute right-1 top-1 ring-card" />
+          )}
         </button>
         <CollapsedFlyout
           open={flyoutOpen}
@@ -402,6 +441,7 @@ function SidebarItem({
           pathname={pathname}
           onClose={closeFlyout}
           onPick={pick}
+          ecommercePending={ecommercePending}
         />
       </div>
     );
@@ -423,6 +463,7 @@ function SidebarItem({
         >
           <Icon className="size-[1.125rem] shrink-0" strokeWidth={1.75} />
           <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+          {showEcommercePending && <EcommercePendingBadge />}
           {expanded ? (
             <ChevronDown className="size-4 shrink-0 opacity-70" />
           ) : (
@@ -441,6 +482,7 @@ function SidebarItem({
                 onMobileNav={onMobileNav}
                 flyout={flyout}
                 setFlyout={setFlyout}
+                ecommercePending={ecommercePending}
               />
             ))}
           </div>
@@ -451,6 +493,8 @@ function SidebarItem({
 
   if (item.href) {
     const isPOSStandaloneLink = item.href === "/pos";
+    const ordersPendingBadge =
+      Boolean(ecommercePending) && item.href === ECOMMERCE_ORDERS_HREF;
     if (collapsedDesktop) {
       if (isPOSStandaloneLink) {
         return (
@@ -473,13 +517,16 @@ function SidebarItem({
           title={item.label}
           onClick={onMobileNav}
           className={cn(
-            "flex items-center justify-center rounded-xl p-2.5 transition-colors",
+            "relative flex items-center justify-center rounded-xl p-2.5 transition-colors",
             isActive
               ? "bg-primary/12 text-primary shadow-sm ring-1 ring-primary/20"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           )}
         >
           <Icon className="size-[1.35rem] shrink-0" strokeWidth={1.75} />
+          {ordersPendingBadge && (
+            <EcommercePendingBadge className="absolute right-1 top-1 ring-card" />
+          )}
         </Link>
       );
     }
@@ -512,7 +559,8 @@ function SidebarItem({
         style={{ paddingLeft: 12 + d * 12 }}
       >
         <Icon className="size-[1.125rem] shrink-0" strokeWidth={1.75} />
-        <span className="truncate">{item.label}</span>
+        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        {ordersPendingBadge && <EcommercePendingBadge />}
       </Link>
     );
   }
@@ -535,10 +583,33 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const [isLg, setIsLg] = useState(true);
+  const [pendingEcommerceCount, setPendingEcommerceCount] = useState(0);
   const [flyout, setFlyout] = useState<{
     key: string;
     anchor: HTMLElement;
   } | null>(null);
+
+  const refreshPendingEcommerceOrders = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    if (!localStorage.getItem("admin_token")) {
+      setPendingEcommerceCount(0);
+      return;
+    }
+    try {
+      const res = await apiFetch<{ total?: number }>(
+        "/orders?status=PENDING&page=1&limit=1"
+      );
+      setPendingEcommerceCount(res.total ?? 0);
+    } catch {
+      setPendingEcommerceCount(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPendingEcommerceOrders();
+    const id = window.setInterval(refreshPendingEcommerceOrders, 60_000);
+    return () => window.clearInterval(id);
+  }, [refreshPendingEcommerceOrders]);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -560,7 +631,12 @@ export function Sidebar({
     setFlyout(null);
   }, [pathname]);
 
+  useEffect(() => {
+    void refreshPendingEcommerceOrders();
+  }, [pathname, refreshPendingEcommerceOrders]);
+
   const collapsedDesktop = collapsed && isLg;
+  const ecommercePending = pendingEcommerceCount > 0;
 
   const closeMobile = useCallback(() => onMobileOpenChange(false), [onMobileOpenChange]);
 
@@ -651,6 +727,7 @@ export function Sidebar({
               onMobileNav={closeMobile}
               flyout={flyout}
               setFlyout={setFlyout}
+              ecommercePending={ecommercePending}
             />
           ))}
         </nav>

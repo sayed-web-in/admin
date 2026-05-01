@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
             protocol: parsedApiUrl.protocol.replace(":", "") as "http" | "https",
             hostname: parsedApiUrl.hostname,
             port: parsedApiUrl.port || "",
-            pathname: "/uploads/**",
+            pathname: "/**",
           },
         ]
       : [],

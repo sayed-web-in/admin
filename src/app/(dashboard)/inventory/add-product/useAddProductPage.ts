@@ -74,7 +74,7 @@ function emptyFormState(branchId = 0): ProductFormState {
     hasSerialNumber: false,
     images: [],
     pendingImages: [],
-    specifications: [{ name: "", value: "" }],
+    specifications: [],
     variants: [],
   };
 }
@@ -178,7 +178,7 @@ export function useAddProductPage() {
     hasSerialNumber: false,
     images: [],
     pendingImages: [],
-    specifications: [{ name: "", value: "" }],
+    specifications: [],
     variants: [],
   });
 
@@ -372,7 +372,7 @@ export function useAddProductPage() {
         hasSerialNumber: Boolean(p.hasImei),
         images: imgs,
         pendingImages: [],
-        specifications: specs.length > 0 ? specs : [{ name: "", value: "" }],
+        specifications: specs.length > 0 ? specs : [],
         variants,
       });
       setStoreRows(mapApiProductToStoreRows(p));
