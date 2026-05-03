@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import NextTopLoader from "nextjs-toploader";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,16 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         />
       </head>
       <body className="min-h-full bg-muted/30" suppressHydrationWarning>
+        <NextTopLoader
+          color="#8b5cf6"
+          height={4}
+          showSpinner={false}
+          crawlSpeed={300}
+          speed={300}
+          shadow="0 0 12px rgba(139, 92, 246, 0.6)"
+          zIndex={9999}
+          easing="ease"
+        />
         {children}
         <Toaster />
       </body>

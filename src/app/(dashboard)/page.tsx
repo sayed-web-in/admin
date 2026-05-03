@@ -44,6 +44,35 @@ interface RecentOrder {
   date: string;
 }
 
+/** API may return `customer` as a string or a nested Customer object. */
+function displayCustomerLabel(
+  customerField: unknown,
+  fallbacks: { name?: string; phone?: string } = {}
+): string {
+  if (typeof customerField === "string" && customerField.trim()) {
+    return customerField.trim();
+  }
+  if (
+    customerField &&
+    typeof customerField === "object" &&
+    customerField !== null
+  ) {
+    const c = customerField as {
+      name?: string | null;
+      phone?: string | null;
+      email?: string | null;
+    };
+    const parts = [c.name, c.phone, c.email].filter(
+      (x): x is string => Boolean(x && String(x).trim())
+    );
+    if (parts.length) return parts.join(" · ");
+  }
+  const fb = [fallbacks.name, fallbacks.phone].filter(
+    (x): x is string => Boolean(x && String(x).trim())
+  );
+  return fb.length ? fb.join(" · ") : "—";
+}
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     todayRevenue: 0,
@@ -81,10 +110,36 @@ export default function DashboardPage() {
       });
 
       const salesList = salesData?.sales || salesData?.recentSales || [];
-      setRecentSales(salesList.slice(0, 5));
+      setRecentSales(
+        salesList.slice(0, 5).map((s: Record<string, unknown>) => ({
+          id: Number(s.id),
+          invoice: String(s.invoice ?? s.invoiceNumber ?? `#${s.id}`),
+          customer: displayCustomerLabel(s.customer, {
+            name: s.customerName as string | undefined,
+            phone: s.customerPhone as string | undefined,
+          }),
+          total: Number(s.total ?? s.grandTotal ?? 0),
+          date: String(s.date ?? s.createdAt ?? ""),
+        }))
+      );
 
-      const ordersList = ordersData?.orders || ordersData?.data || (Array.isArray(ordersData) ? ordersData : []);
-      setRecentOrders(ordersList.slice(0, 5));
+      const ordersList =
+        ordersData?.orders ||
+        ordersData?.data ||
+        (Array.isArray(ordersData) ? ordersData : []);
+      setRecentOrders(
+        ordersList.slice(0, 5).map((o: Record<string, unknown>) => ({
+          id: Number(o.id),
+          orderNumber: String(o.orderNumber ?? ""),
+          customer: displayCustomerLabel(o.customer, {
+            name: o.name as string | undefined,
+            phone: o.phone as string | undefined,
+          }),
+          status: String(o.status ?? ""),
+          total: Number(o.totalAmount ?? o.total ?? 0),
+          date: String(o.createdAt ?? o.date ?? ""),
+        }))
+      );
 
       setLoading(false);
     };

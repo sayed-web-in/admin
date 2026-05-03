@@ -96,7 +96,7 @@ export function ProductCard({ product, storeProduct, onAdd }: ProductCardProps) 
               {brandName}
             </p>
           )}
-          <h3 className="text-sm lg:text-base font-semibold text-slate-900 line-clamp-1">
+          <h3 className="line-clamp-2 break-words text-sm font-semibold leading-snug text-slate-900 lg:text-base lg:leading-snug">
             {product.name}
           </h3>
           {variantName && (

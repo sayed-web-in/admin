@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Maximize, Minimize, User, Menu } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Maximize, Minimize, User, Menu, Store, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import {
@@ -11,10 +12,31 @@ import {
   setSelectedBranch,
 } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Branch {
   id: number;
   name: string;
+}
+
+function normalizeBranchesPayload(raw: unknown): Branch[] {
+  if (Array.isArray(raw)) return raw as Branch[];
+  if (
+    raw &&
+    typeof raw === "object" &&
+    "data" in raw &&
+    Array.isArray((raw as { data: unknown }).data)
+  ) {
+    return (raw as { data: Branch[] }).data;
+  }
+  return [];
 }
 
 export function AdminHeader({
@@ -24,6 +46,9 @@ export function AdminHeader({
   onToggleSidebar?: () => void;
   showSidebarToggle?: boolean;
 }) {
+  const pathname = usePathname();
+  const isPosRoute =
+    pathname === "/pos" || pathname.startsWith("/pos/");
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelected] = useState<number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -35,14 +60,17 @@ export function AdminHeader({
   }, []);
 
   useEffect(() => {
-    apiFetch<Branch[]>("/branches")
-      .then((data) => {
-        setBranches(Array.isArray(data) ? data : []);
+    apiFetch<unknown>("/branches")
+      .then((raw) => {
+        const list = normalizeBranchesPayload(raw);
+        setBranches(list);
         const saved = getSelectedBranch();
-        if (saved) setSelected(saved);
-        else if (data.length > 0) {
-          setSelected(data[0].id);
-          setSelectedBranch(data[0].id);
+        const savedOk = saved && list.some((b) => b.id === saved);
+        if (savedOk) {
+          setSelected(saved);
+        } else if (list.length > 0) {
+          setSelected(list[0].id);
+          setSelectedBranch(list[0].id);
         }
       })
       .catch(() => {});
@@ -59,12 +87,6 @@ export function AdminHeader({
       document.removeEventListener("click", close);
     };
   }, [userOpen]);
-
-  const handleBranchChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = Number(e.target.value);
-    setSelected(id);
-    setSelectedBranch(id);
-  };
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -84,7 +106,9 @@ export function AdminHeader({
   return (
     <header
       className={cn(
-        "sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-2 sm:gap-3 sm:px-4"
+        "sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-2 sm:gap-3 sm:px-4",
+        "shadow-[0_4px_6px_-1px_rgba(0,0,0,0.06),0_10px_20px_-5px_rgba(0,0,0,0.08)]",
+        "dark:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.25),0_12px_24px_-6px_rgba(0,0,0,0.45)]"
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-3">
@@ -98,25 +122,79 @@ export function AdminHeader({
             <Menu className="size-5" aria-hidden />
           </button>
         )}
-        <label className="sr-only" htmlFor="header-branch">
-          Branch
-        </label>
-        <select
-          id="header-branch"
-          value={selectedBranch || ""}
-          onChange={handleBranchChange}
-          className={cn(
-            "h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-sm outline-none",
-            "focus:border-primary focus:ring-2 focus:ring-primary/25 sm:px-3",
-            "max-w-[min(100%,11rem)] sm:max-w-[200px] md:max-w-[240px]"
-          )}
-        >
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
+        <div className="relative flex min-w-0 max-w-[min(100%,20rem)] flex-1 items-center gap-2 sm:max-w-[280px]">
+          <span className="hidden shrink-0 text-sm font-medium text-muted-foreground sm:inline">
+            Branch:
+          </span>
+          <Select
+            value={selectedBranch != null ? String(selectedBranch) : ""}
+            onValueChange={(val) => {
+              const id = Number(val);
+              setSelected(id);
+              setSelectedBranch(id);
+            }}
+            disabled={branches.length === 0}
+          >
+            <SelectTrigger
+              aria-label="Branch"
+              size="default"
+              className={cn(
+                "h-auto min-h-9 flex-1 justify-start gap-2 rounded-lg border border-border/80 bg-muted/50 py-2 pr-3 pl-2.5 shadow-[0_1px_0_0_rgba(255,255,255,0.06),0_2px_4px_rgba(0,0,0,0.06)]",
+                "hover:bg-muted/70 hover:shadow-[0_1px_0_0_rgba(255,255,255,0.08),0_3px_6px_rgba(0,0,0,0.08)]",
+                "focus-visible:border-primary/40 focus-visible:ring-primary/15",
+                "data-[size=default]:h-auto data-[size=default]:min-h-9 dark:bg-muted/25",
+                "[&>svg:last-of-type]:hidden"
+              )}
+            >
+              <span
+                className={cn(
+                  "flex size-6 shrink-0 items-center justify-center rounded-md",
+                  "bg-gradient-to-br from-indigo-500 to-violet-600 text-white",
+                  "shadow-[0_1px_0_0_rgba(255,255,255,0.22),0_2px_4px_rgba(99,102,241,0.35),0_3px_6px_rgba(124,58,237,0.18)]"
+                )}
+              >
+                <Store className="size-3.5 shrink-0" aria-hidden />
+              </span>
+              <SelectValue placeholder="Loading…" />
+            </SelectTrigger>
+            <SelectContent
+              position="popper"
+              side="bottom"
+              align="start"
+              sideOffset={4}
+              className="z-[120]"
+            >
+              <SelectGroup>
+                {branches.map((b) => (
+                  <SelectItem key={b.id} value={String(b.id)}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {!isPosRoute && (
+          <button
+            type="button"
+            onClick={() =>
+              window.open("/pos", "_blank", "noopener,noreferrer")
+            }
+            className={cn(
+              "ml-2 flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-violet-600/90",
+              "bg-gradient-to-br from-indigo-500 to-violet-600 px-2.5 py-2 text-sm font-semibold text-white",
+              "shadow-[0_2px_10px_rgba(99,102,241,0.35)] transition-[transform,box-shadow,filter]",
+              "hover:-translate-y-0.5 hover:shadow-[0_4px_14px_rgba(99,102,241,0.45)] hover:brightness-110",
+              "active:translate-y-0 sm:ml-4 sm:px-3.5"
+            )}
+            title="Point of Sale"
+            aria-label="Open Point of Sale in new tab"
+          >
+            <CreditCard className="size-[1.125rem] shrink-0" aria-hidden />
+            <span className="hidden sm:inline">POS</span>
+          </button>
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">

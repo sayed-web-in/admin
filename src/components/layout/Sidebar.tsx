@@ -28,9 +28,7 @@ import {
   Puzzle,
   Barcode,
   QrCode,
-  ArrowLeftRight,
   Download,
-  Upload,
   CreditCard,
   Clock,
   Wrench,
@@ -54,6 +52,9 @@ import {
   CircleHelp,
   Sparkles,
   MapPin,
+  Megaphone,
+  Radio,
+  Tag,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -91,6 +92,7 @@ const menuItems: MenuItem[] = [
     children: [
       { label: "Add Product", href: "/inventory/add-product", icon: Plus },
       { label: "Manage Product", href: "/inventory/manage-product", icon: List },
+      { label: "Price List", href: "/inventory/price-list", icon: Tag },
       { label: "Low Stock", href: "/inventory/low-stock", icon: AlertTriangle },
       { label: "Brand Management", href: "/inventory/brands", icon: Tags },
       { label: "Category Management", href: "/inventory/categories", icon: Layers },
@@ -103,11 +105,7 @@ const menuItems: MenuItem[] = [
   {
     label: "Stock",
     icon: Warehouse,
-    children: [
-      { label: "Stock Adjustment", href: "/stock/adjustment", icon: ArrowLeftRight },
-      { label: "Stock Export", href: "/stock/export", icon: Download },
-      { label: "Stock Transfer", href: "/stock/transfer", icon: Upload },
-    ],
+    children: [{ label: "Stock Export", href: "/stock/export", icon: Download }],
   },
   {
     label: "Sales & POS",
@@ -160,6 +158,11 @@ const menuItems: MenuItem[] = [
       },
       { label: "Accounts List", href: "/finance/accounts", icon: BookOpen },
       { label: "Transactions", href: "/finance/transactions", icon: FileText },
+      {
+        label: "Product Transactions",
+        href: "/finance/product-transactions",
+        icon: Package,
+      },
       { label: "Trial Balance", href: "/finance/trial-balance", icon: PieChart },
       { label: "Cash Flow", href: "/finance/cash-flow", icon: TrendingUp },
       { label: "Account Statement", href: "/finance/statement", icon: FileText },
@@ -170,6 +173,17 @@ const menuItems: MenuItem[] = [
     label: "Ecommerce",
     icon: ShoppingBag,
     children: [
+      {
+        label: "Marketing",
+        icon: Megaphone,
+        children: [
+          {
+            label: "Storefront marketing",
+            href: "/ecommerce/marketing",
+            icon: Radio,
+          },
+        ],
+      },
       { label: "Banner", href: "/ecommerce/banners", icon: Image },
       { label: "Short Features", href: "/ecommerce/short-features", icon: Sparkles },
       { label: "Articles", href: "/ecommerce/articles", icon: FileText },
@@ -653,8 +667,9 @@ export function Sidebar({
 
       <aside
         className={cn(
-          "sidebar-shell fixed left-0 z-[55] flex w-[min(18rem,calc(100vw-2.5rem))] flex-col border-r border-border bg-card shadow-[4px_0_24px_-8px_rgba(0,0,0,0.08)]",
-          /* Mobile: under header (4rem / h-16), smooth horizontal slide */
+          "sidebar-shell fixed left-0 z-[55] flex w-[min(18rem,calc(100vw-2.5rem))] flex-col border-r border-border bg-card",
+          "shadow-[2px_0_4px_-2px_rgba(0,0,0,0.04),6px_0_14px_-6px_rgba(0,0,0,0.05)]",
+          "dark:shadow-[2px_0_6px_-2px_rgba(0,0,0,0.2),8px_0_18px_-6px_rgba(0,0,0,0.28)]",
           "top-16 h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] transition-[transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform",
           "lg:top-0 lg:z-50 lg:h-dvh lg:max-h-screen lg:will-change-auto lg:transition-[transform,width] lg:duration-200 lg:ease-out",
           collapsedDesktop ? "lg:w-[4.5rem]" : "lg:w-64",
