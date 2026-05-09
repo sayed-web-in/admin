@@ -176,7 +176,7 @@ export default function PurchasesPage() {
     apiFetch<unknown>("/branches")
       .then((d) => setBranches(extractBranches(d)))
       .catch(() => {});
-    apiFetch<unknown>("/contacts/suppliers?limit=500")
+    apiFetch<unknown>("/suppliers?limit=500&isActive=true")
       .then((d) => setSuppliers(extractApiList<Supplier>(d, ["suppliers"])))
       .catch(() => {});
   }, []);

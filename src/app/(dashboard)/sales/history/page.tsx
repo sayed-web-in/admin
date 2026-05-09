@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ShoppingCart,
   DollarSign,
@@ -46,6 +47,7 @@ interface SaleItem {
 interface Sale {
   id: number;
   invoiceNumber: string;
+  order?: { id: number; orderNumber: string } | null;
   customer?: { name: string; phone: string; email?: string };
   items?: SaleItem[];
   itemCount?: number;
@@ -172,6 +174,22 @@ export default function SalesHistoryPage() {
       render: (_: Sale, i: number) => (page - 1) * PAGE_SIZE + i + 1,
     },
     { key: "invoiceNumber", label: "Invoice No" },
+    {
+      key: "source",
+      label: "Source",
+      className: "min-w-[7rem]",
+      render: (item: Sale) =>
+        item.order ? (
+          <Link
+            href={`/ecommerce/orders/${item.order.id}`}
+            className="text-sm font-medium text-primary hover:underline"
+          >
+            {item.order.orderNumber}
+          </Link>
+        ) : (
+          <span className="text-sm text-muted-foreground">POS</span>
+        ),
+    },
     {
       key: "customer",
       label: "Customer",

@@ -149,8 +149,7 @@ export function AdminHeader({
               <span
                 className={cn(
                   "flex size-6 shrink-0 items-center justify-center rounded-md",
-                  "bg-gradient-to-br from-indigo-500 to-violet-600 text-white",
-                  "shadow-[0_1px_0_0_rgba(255,255,255,0.22),0_2px_4px_rgba(99,102,241,0.35),0_3px_6px_rgba(124,58,237,0.18)]"
+                  "bg-muted text-black dark:text-white"
                 )}
               >
                 <Store className="size-3.5 shrink-0" aria-hidden />
@@ -182,10 +181,11 @@ export function AdminHeader({
               window.open("/pos", "_blank", "noopener,noreferrer")
             }
             className={cn(
-              "ml-2 flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-violet-600/90",
-              "bg-gradient-to-br from-indigo-500 to-violet-600 px-2.5 py-2 text-sm font-semibold text-white",
-              "shadow-[0_2px_10px_rgba(99,102,241,0.35)] transition-[transform,box-shadow,filter]",
-              "hover:-translate-y-0.5 hover:shadow-[0_4px_14px_rgba(99,102,241,0.45)] hover:brightness-110",
+              "ml-2 flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-black/80",
+              "bg-muted/60 px-2.5 py-2 text-sm font-semibold text-black",
+              "shadow-sm transition-[transform,box-shadow,background-color]",
+              "hover:-translate-y-0.5 hover:bg-muted hover:shadow-md",
+              "dark:border-white/40 dark:bg-muted/40 dark:text-white",
               "active:translate-y-0 sm:ml-4 sm:px-3.5"
             )}
             title="Point of Sale"

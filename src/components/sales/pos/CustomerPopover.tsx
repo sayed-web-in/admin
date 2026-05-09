@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { Search, Plus, User, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { formatPrice } from "@/lib/utils";
 import { AddCustomerModal } from "@/components/sales/pos/AddCustomerModal";
 
 export interface POSCustomer {
@@ -11,6 +12,8 @@ export interface POSCustomer {
   name: string;
   phone: string;
   email: string | null;
+  /** Customer wallet balance (POS advance apply). */
+  totalAdvance?: number | string | null;
 }
 
 interface CustomerPopoverProps {
@@ -270,6 +273,11 @@ export function CustomerPopover({
             {customer.phone && (
               <p className="text-xs text-slate-500">{customer.phone}</p>
             )}
+            {customer.totalAdvance != null && Number(customer.totalAdvance) > 0 ? (
+              <p className="text-xs font-medium text-emerald-700">
+                Advance {formatPrice(Number(customer.totalAdvance))}
+              </p>
+            ) : null}
           </div>
         </div>
       )}

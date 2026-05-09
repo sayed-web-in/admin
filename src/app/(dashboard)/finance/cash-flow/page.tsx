@@ -12,7 +12,7 @@ import {
   Layers,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, firstDayOfMonthYmdInDhaka, todayYmdInDhaka } from "@/lib/utils";
 import { getSelectedBranch } from "@/lib/auth";
 import {
   INVENTORY_CARD_SHELL,
@@ -34,9 +34,8 @@ interface MonthlyRow {
 export default function CashFlowPage() {
   const router = useRouter();
   const branchId = getSelectedBranch();
-  const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  const today = now.toISOString().slice(0, 10);
+  const firstDay = firstDayOfMonthYmdInDhaka();
+  const today = todayYmdInDhaka();
 
   const [dateFrom, setDateFrom] = useState(firstDay);
   const [dateTo, setDateTo] = useState(today);

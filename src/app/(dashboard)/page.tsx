@@ -17,7 +17,7 @@ import { DataTable } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
-import { formatPrice, formatDate } from "@/lib/utils";
+import { formatPrice, formatDate, todayYmdInDhaka } from "@/lib/utils";
 import { getSelectedBranch } from "@/lib/auth";
 
 interface DashboardStats {
@@ -88,7 +88,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const today = new Date().toISOString().split("T")[0];
+      const today = todayYmdInDhaka();
       const params = new URLSearchParams();
       if (branchId) params.set("branchId", String(branchId));
 

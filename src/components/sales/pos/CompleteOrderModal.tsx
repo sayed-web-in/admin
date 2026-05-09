@@ -71,6 +71,7 @@ interface CompleteOrderModalProps {
     receivedAmount: number;
     payments: PaymentRow[];
     note: string;
+    advanceApplied?: number;
   }) => Promise<void>;
 }
 
@@ -102,7 +103,11 @@ export function CompleteOrderModal({
   const [paymentRows, setPaymentRows] = useState<PaymentRow[]>([
     { id: "1", accountId: "", amount: "" },
   ]);
+  const [advanceApplied, setAdvanceApplied] = useState(0);
   const [note, setNote] = useState("");
+
+  const customerAdvanceBalance =
+    customer?.totalAdvance != null ? Number(customer.totalAdvance) || 0 : 0;
 
   const getRowAmount = (row: PaymentRow) =>
     typeof row.amount === "number" ? row.amount : Number(row.amount) || 0;
@@ -124,13 +129,20 @@ export function CompleteOrderModal({
       accountType.includes("nagad") ||
       accountType.includes("card"));
 
-  const totalReceived = paymentRows.reduce(
+  const totalCashRows = paymentRows.reduce(
     (s, r) => s + (typeof r.amount === "number" ? r.amount : Number(r.amount) || 0),
     0
   );
-  const change = Math.max(0, totalReceived - grandTotal);
-  const due = Math.max(0, grandTotal - totalReceived);
-  const paymentStatus = totalReceived >= grandTotal ? "paid" : totalReceived > 0 ? "partial" : "due";
+  const displayReceive = totalCashRows + advanceApplied;
+  const change = Math.max(0, displayReceive - grandTotal);
+  const due = Math.max(0, grandTotal - displayReceive);
+  const paymentStatus =
+    displayReceive >= grandTotal ? "paid" : displayReceive > 0 ? "partial" : "due";
+
+  const maxAdvanceApplicable =
+    customer && customerAdvanceBalance > 0
+      ? Math.min(customerAdvanceBalance, Math.max(0, grandTotal - totalCashRows))
+      : 0;
 
   const statusBadge: Record<string, string> = {
     paid: "bg-emerald-100 text-emerald-700 border-emerald-300",
@@ -158,9 +170,17 @@ export function CompleteOrderModal({
     if (open) {
       fetchAccounts();
       setNote("");
+      setAdvanceApplied(0);
       setPaymentRows([{ id: String(Date.now()), accountId: "", amount: "" }]);
     }
   }, [open, fetchAccounts]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (advanceApplied > maxAdvanceApplicable) {
+      setAdvanceApplied(maxAdvanceApplicable);
+    }
+  }, [open, maxAdvanceApplicable, advanceApplied]);
 
   useEffect(() => {
     if (!open || accountsLoading || accounts.length === 0) return;
@@ -193,9 +213,10 @@ export function CompleteOrderModal({
       const changedIsCash = isCashType(changedType);
       const changedAmount = getRowAmount(changedRow);
 
-      if (!changedIsCash && changedAmount > grandTotal) {
+      const remGrand = Math.max(0, grandTotal - advanceApplied);
+      if (!changedIsCash && changedAmount > remGrand) {
         toast.error(
-          `Online/Bank account cannot receive more than ${formatPrice(grandTotal)}.`
+          `Online/Bank account cannot receive more than ${formatPrice(remGrand)} (after advance).`
         );
         return prev;
       }
@@ -206,9 +227,9 @@ export function CompleteOrderModal({
       });
       const total = nextRows.reduce((sum, r) => sum + getRowAmount(r), 0);
 
-      if (hasAnyNonCash && total > grandTotal) {
+      if (hasAnyNonCash && total + advanceApplied > grandTotal) {
         toast.error(
-          `Bank/Mobile payment selected, total receive cannot exceed ${formatPrice(grandTotal)}.`
+          `Bank/Mobile payment selected, total receive cannot exceed ${formatPrice(grandTotal - advanceApplied)} (plus advance).`
         );
         return prev;
       }
@@ -222,9 +243,9 @@ export function CompleteOrderModal({
       const t = getAccountTypeById(r.accountId);
       return isNonCashType(t) && getRowAmount(r) > 0;
     });
-    if (hasAnyNonCash && totalReceived > grandTotal) {
+    if (hasAnyNonCash && totalCashRows + advanceApplied > grandTotal) {
       toast.error(
-        `When bank/mobile account is used, total receive cannot exceed ${formatPrice(grandTotal)}.`
+        `When bank/mobile account is used, cash accounts plus advance cannot exceed ${formatPrice(grandTotal)}.`
       );
       return;
     }
@@ -232,7 +253,13 @@ export function CompleteOrderModal({
     const paymentMethod = primaryRow?.accountId
       ? (accounts.find((a) => String(a.id) === primaryRow.accountId)?.accountType?.toLowerCase() ?? "account")
       : "account";
-    await onConfirm({ paymentMethod, receivedAmount: totalReceived, payments: paymentRows, note });
+    await onConfirm({
+      paymentMethod,
+      receivedAmount: totalCashRows,
+      payments: paymentRows,
+      note,
+      advanceApplied: advanceApplied > 0 ? advanceApplied : undefined,
+    });
   };
 
   return (
@@ -341,6 +368,59 @@ export function CompleteOrderModal({
 
           {/* RIGHT */}
           <div className="flex flex-col gap-3">
+            {customer && customerAdvanceBalance > 0 ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+                    Advance balance
+                  </span>
+                  <span className="text-sm font-bold tabular-nums text-emerald-800">
+                    {formatPrice(customerAdvanceBalance)}
+                  </span>
+                </div>
+                <p className="mt-1 text-[10px] text-emerald-800/80">
+                  Apply to this order (max {formatPrice(maxAdvanceApplicable)}).
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAdvanceApplied(maxAdvanceApplicable)}
+                    disabled={maxAdvanceApplicable <= 0}
+                    className="rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+                  >
+                    Use full
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdvanceApplied(0)}
+                    disabled={advanceApplied <= 0}
+                    className="rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-40"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <label className="mt-2 block text-[10px] font-semibold text-emerald-800">Apply amount</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={maxAdvanceApplicable}
+                  step="0.01"
+                  value={advanceApplied || ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "") {
+                      setAdvanceApplied(0);
+                      return;
+                    }
+                    const num = parseFloat(v);
+                    if (!Number.isFinite(num) || num < 0) return;
+                    setAdvanceApplied(Math.min(num, maxAdvanceApplicable));
+                  }}
+                  className="mt-1 w-full h-8 rounded-lg border border-emerald-200 bg-white px-2 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+            ) : null}
+
             {/* Payment rows */}
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">Payment</p>
@@ -359,7 +439,7 @@ export function CompleteOrderModal({
                   const otherRowsTotal = paymentRows
                     .filter((r) => r.id !== row.id)
                     .reduce((sum, r) => sum + getRowAmount(r), 0);
-                  const maxForRow = Math.max(0, grandTotal - otherRowsTotal);
+                  const maxForRow = Math.max(0, grandTotal - advanceApplied - otherRowsTotal);
                   return (
                     <div key={row.id} className="flex items-end gap-2">
                       <div className="flex-1 min-w-0">
@@ -459,7 +539,7 @@ export function CompleteOrderModal({
           </div>
           <div className="flex flex-col rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Receive</span>
-            <span className="text-sm font-bold tabular-nums text-emerald-700">{formatPrice(totalReceived)}</span>
+            <span className="text-sm font-bold tabular-nums text-emerald-700">{formatPrice(displayReceive)}</span>
           </div>
           <div className="flex flex-col rounded-xl border border-sky-300 bg-sky-50 px-3 py-2">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-600">Change</span>

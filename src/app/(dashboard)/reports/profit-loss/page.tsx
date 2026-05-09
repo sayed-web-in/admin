@@ -22,6 +22,7 @@ interface Branch {
 
 type DataKeys =
   | "posSales"
+  | "ecommerceSales"
   | "wholesaleSales"
   | "quickSellSales"
   | "totalSales"
@@ -50,6 +51,7 @@ const ALL = "__all__";
 
 const DATA_KEYS: DataKeys[] = [
   "posSales",
+  "ecommerceSales",
   "wholesaleSales",
   "quickSellSales",
   "totalSales",
@@ -69,13 +71,20 @@ const DATA_KEYS: DataKeys[] = [
 /** Seller-style rows: label, data key, row type, optional native tooltip */
 const ROWS: { label: string; key: DataKeys; type: RowType; tip?: string }[] = [
   { label: "INCOME", key: "totalIncome", type: "section", tip: "Revenue summary" },
-  { label: "POS / Store Sales", key: "posSales", type: "sub" },
-  { label: "Wholesale Sales", key: "wholesaleSales", type: "sub", tip: "Reserved" },
-  { label: "Quick Sell Sales", key: "quickSellSales", type: "sub", tip: "Reserved" },
-  { label: "Total Sales", key: "totalSales", type: "total" },
+  {
+    label: "Sales (POS)",
+    key: "posSales",
+    type: "sub",
+    tip: "Counter & invoices not linked to an online order (product portion: grand total minus services on invoice)",
+  },
+  {
+    label: "E‑commerce (orders)",
+    key: "ecommerceSales",
+    type: "sub",
+    tip: "Fulfilled web orders: sales linked to an Order (product portion per invoice)",
+  },
   { label: "Service Income", key: "serviceIncome", type: "sub", tip: "Income category name contains “service”" },
   { label: "Others Income", key: "othersIncome", type: "sub" },
-  { label: "Return Gain", key: "returnGain", type: "sub", tip: "Not used" },
   { label: "Total Income", key: "totalIncome", type: "highlight" },
   { label: "Gross Profit", key: "grossProfit", type: "highlight" },
   { label: "EXPENSES", key: "totalExpense", type: "section", tip: "Costs" },
@@ -190,7 +199,7 @@ export default function ProfitLossReportPage() {
     <div className="w-full min-w-0 space-y-5 pb-8">
       <PageHeader
         title="Profit & Loss"
-        description="Year + branch, then Generate — monthly table (seller-style)."
+        description="Year and branch: POS vs e‑commerce product sales, finance income & expense categories, gross and net profit."
         action={
           done && report ? (
             <Button type="button" variant="outline" size="sm" onClick={printTable}>

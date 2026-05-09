@@ -14,6 +14,7 @@ import {
   RotateCcw,
   LayoutGrid,
   Layers,
+  Receipt,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
@@ -47,6 +48,7 @@ interface Account {
   name: string;
   accountNumber?: string;
   type: AccountType;
+  openingBalance?: number;
   balance: number;
   isActive?: boolean;
   status?: string;
@@ -74,7 +76,7 @@ export default function AccountsPage() {
   const [formName, setFormName] = useState("");
   const [formNumber, setFormNumber] = useState("");
   const [formType, setFormType] = useState<AccountType>("CASH");
-  const [formBalance, setFormBalance] = useState("");
+  const [formOpeningBalance, setFormOpeningBalance] = useState("");
   const [formStatus, setFormStatus] = useState(true);
 
   const fetchData = async () => {
@@ -85,6 +87,8 @@ export default function AccountsPage() {
       setRows(
         list.map((r) => ({
           ...r,
+          openingBalance: Number((r as Account).openingBalance ?? 0),
+          balance: Number((r as Account).balance ?? 0),
           status: (r.isActive ?? r.status === "active") ? "active" : "inactive",
         })),
       );
@@ -123,6 +127,10 @@ export default function AccountsPage() {
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const totalBalance = rows.reduce((s, a) => s + Number(a.balance || 0), 0);
+  const totalOpening = rows.reduce(
+    (s, a) => s + Number(a.openingBalance ?? 0),
+    0
+  );
   const cashCount = rows.filter((a) => a.type === "CASH").length;
   const bankCount = rows.filter((a) => a.type === "BANK").length;
   const mobileCount = rows.filter((a) => a.type === "MOBILE_BANKING").length;
@@ -132,7 +140,7 @@ export default function AccountsPage() {
     setFormName("");
     setFormNumber("");
     setFormType("CASH");
-    setFormBalance("");
+    setFormOpeningBalance("");
     setFormStatus(true);
     setModalOpen(true);
   };
@@ -142,7 +150,7 @@ export default function AccountsPage() {
     setFormName(item.name);
     setFormNumber(item.accountNumber || "");
     setFormType(item.type);
-    setFormBalance(String(item.balance || 0));
+    setFormOpeningBalance(String(Number(item.openingBalance ?? 0)));
     setFormStatus((item.status || "inactive") === "active");
     setModalOpen(true);
   };
@@ -150,11 +158,12 @@ export default function AccountsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const opening = Math.max(0, parseFloat(formOpeningBalance) || 0);
       const body = {
         name: formName.trim(),
         accountNumber: formNumber.trim() || undefined,
         type: formType,
-        balance: parseFloat(formBalance) || 0,
+        openingBalance: opening,
         isActive: formStatus,
       };
       if (editItem) {
@@ -200,7 +209,22 @@ export default function AccountsPage() {
         </Badge>
       ),
     },
-    { key: "balance", label: "Balance", render: (a: Account) => <span className="font-semibold">{formatPrice(Number(a.balance || 0))}</span> },
+    {
+      key: "openingBalance",
+      label: "Opening",
+      render: (a: Account) => (
+        <span className="tabular-nums text-muted-foreground">
+          {formatPrice(Number(a.openingBalance ?? 0))}
+        </span>
+      ),
+    },
+    {
+      key: "balance",
+      label: "Current Balance",
+      render: (a: Account) => (
+        <span className="font-semibold tabular-nums">{formatPrice(Number(a.balance || 0))}</span>
+      ),
+    },
     { key: "status", label: "Status", render: (a: Account) => <StatusBadge status={a.status || "inactive"} /> },
     {
       key: "actions",
@@ -234,8 +258,9 @@ export default function AccountsPage() {
 
       <section className={`${INVENTORY_CARD_SHELL} p-5 sm:p-6 md:p-7`}>
         <InventorySectionHeader icon={LayoutGrid} title="Overview" description="Quick account breakdown." />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <StatCard title="Total Accounts" value={String(rows.length)} icon={Landmark} />
+          <StatCard title="Total Opening" value={formatPrice(totalOpening)} icon={Receipt} />
           <StatCard title="Total Balance" value={formatPrice(totalBalance)} icon={Wallet} />
           <StatCard title="Cash" value={String(cashCount)} icon={CreditCard} />
           <StatCard title="Bank" value={String(bankCount)} icon={Building2} />
@@ -299,8 +324,23 @@ export default function AccountsPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium">{editItem ? "Balance" : "Initial Balance"}</label>
-            <Input type="number" value={formBalance} onChange={(e) => setFormBalance(e.target.value)} placeholder="0" />
+            <label className="mb-1.5 block text-sm font-medium">
+              Opening balance <span className="text-destructive">*</span>
+            </label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={formOpeningBalance}
+              onChange={(e) => setFormOpeningBalance(e.target.value)}
+              placeholder="0.00"
+              required
+            />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {editItem
+                ? "Changing opening balance adjusts the current balance by the same difference (same as seller admin)."
+                : "Current balance starts equal to opening until you post transactions."}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium">Status</label>
@@ -315,7 +355,15 @@ export default function AccountsPage() {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={saving || !formName.trim()}>
+            <Button
+              onClick={handleSave}
+              disabled={
+                saving ||
+                !formName.trim() ||
+                (Number.isFinite(parseFloat(formOpeningBalance)) &&
+                  parseFloat(formOpeningBalance) < 0)
+              }
+            >
               {saving ? "Saving..." : editItem ? "Update" : "Create"}
             </Button>
           </div>

@@ -1,3 +1,5 @@
+import { formatDateTimeMedShort } from "@/lib/utils";
+
 export interface InvoiceItemPrint {
   productName: string;
   sku: string;
@@ -271,7 +273,7 @@ export function buildInvoicePrintDocumentHtml(invoice: InvoicePrintData): string
       <div class="meta">
         <div><span class="meta-label">Invoice No:</span> <span class="meta-value">${escapeHtml(invoice.invoiceNo)}</span></div>
         <div><span class="meta-label">Order No:</span> <span class="meta-value">${escapeHtml(invoice.orderNo)}</span></div>
-        <div><span class="meta-label">Date:</span> <span class="meta-value">${new Date(invoice.date).toLocaleString()}</span></div>
+        <div><span class="meta-label">Date:</span> <span class="meta-value">${escapeHtml(formatDateTimeMedShort(invoice.date))}</span></div>
       </div>
     </div>
     <div class="two-col">

@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Package, Hash, DollarSign, Loader2, Download, Printer } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, todayYmdInDhaka } from "@/lib/utils";
 import { getSelectedBranch } from "@/lib/auth";
 import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
@@ -105,7 +105,7 @@ export default function StockExportPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `stock-export-${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `stock-export-${todayYmdInDhaka()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

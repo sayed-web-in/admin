@@ -234,16 +234,23 @@ export function POSPage() {
     receivedAmount: number;
     payments?: Array<{ id: string; accountId: string; amount: number | "" }>;
     note: string;
+    advanceApplied?: number;
   }): Promise<boolean> => {
     if (cart.length === 0) return false;
-    if (!customer && Number(opts.receivedAmount || 0) < grandTotal) {
+    const advanceApplied = Math.max(0, Number(opts.advanceApplied || 0));
+    if (!customer && advanceApplied > 0) {
+      toast.error("Advance can only be used for a registered customer.");
+      return false;
+    }
+    const totalPaid = Number(opts.receivedAmount || 0) + advanceApplied;
+    if (!customer && totalPaid < grandTotal) {
       toast.error("Walking customer due sale is not allowed. Please pay full amount.");
       return false;
     }
     setLoading(true);
     const paidAmt = opts.receivedAmount;
-    const changeAmt = Math.max(0, paidAmt - grandTotal);
-    const dueAmt = Math.max(0, grandTotal - paidAmt);
+    const changeAmt = Math.max(0, totalPaid - grandTotal);
+    const dueAmt = Math.max(0, grandTotal - totalPaid);
     const primaryPaymentRow = (opts.payments || []).find(
       (p) => p.accountId && Number(p.amount || 0) > 0
     );
@@ -289,6 +296,7 @@ export function POSPage() {
           paidAmount: paidAmt,
           changeAmount: changeAmt,
           dueAmount: dueAmt,
+          advanceApplied: advanceApplied > 0 ? advanceApplied : undefined,
           note: opts.note || undefined,
         }),
       });
@@ -334,7 +342,8 @@ export function POSPage() {
         taxAmount: 0,
         shippingCost: 0,
         grandTotal,
-        paidAmount: paidAmt,
+        paidAmount: Math.min(grandTotal, totalPaid),
+        advanceApplied,
         receivedAmount: paidAmt,
         changeAmount: changeAmt,
         dueAmount: dueAmt,
@@ -354,10 +363,18 @@ export function POSPage() {
     }
   };
 
-  const handlePayLater = async (note: string) => {
+  const handlePayLater = async (opts: { note: string; advanceApplied?: number }) => {
     if (cart.length === 0) return;
+    const advanceApplied = Math.max(0, Number(opts.advanceApplied || 0));
+    if (advanceApplied > 0 && !customer?.id) {
+      toast.error("Advance requires a registered customer.");
+      return;
+    }
     setLoading(true);
     try {
+      const totalPaid = advanceApplied;
+      const dueAmt = Math.max(0, grandTotal - totalPaid);
+      const paidAmt = Math.min(grandTotal, totalPaid);
       await apiFetch<any>("/sales", {
         method: "POST",
         body: JSON.stringify({
@@ -376,10 +393,11 @@ export function POSPage() {
           status: "PAY_LATER",
           totalAmount: subtotal,
           grandTotal,
-          paidAmount: 0,
+          paidAmount: paidAmt,
           changeAmount: 0,
-          dueAmount: grandTotal,
-          note: note || undefined,
+          dueAmount: dueAmt,
+          advanceApplied: advanceApplied > 0 ? advanceApplied : undefined,
+          note: opts.note || undefined,
         }),
       });
       setCart([]);

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowLeft,
   CalendarDays,
@@ -69,6 +70,7 @@ interface SaleReturn {
 interface SaleDetails {
   id: number;
   invoiceNumber: string;
+  order?: { id: number; orderNumber: string } | null;
   createdAt: string;
   status: string;
   paymentMethod: string;
@@ -358,6 +360,17 @@ export default function SaleHistoryDetailsPage() {
               <span className="text-muted-foreground">Invoice No</span>
               <span className="font-medium">{sale.invoiceNumber}</span>
             </div>
+            {sale.order ? (
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground shrink-0">E‑commerce order</span>
+                <Link
+                  href={`/ecommerce/orders/${sale.order.id}`}
+                  className="font-medium text-primary text-right hover:underline"
+                >
+                  {sale.order.orderNumber}
+                </Link>
+              </div>
+            ) : null}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Branch</span>
               <span className="font-medium">{sale.branch?.name || "—"}</span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AlertCircle, Clock, Package, User, Phone } from "lucide-react";
 import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ interface PayLaterModalProps {
   appliedServices: PosService[];
   loading: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (note: string) => Promise<void>;
+  onConfirm: (opts: { note: string; advanceApplied?: number }) => Promise<void>;
 }
 
 export function PayLaterModal({
@@ -50,10 +50,36 @@ export function PayLaterModal({
   onConfirm,
 }: PayLaterModalProps) {
   const [note, setNote] = useState("");
+  const [advanceApplied, setAdvanceApplied] = useState(0);
+
+  const customerAdvanceBalance =
+    customer?.totalAdvance != null ? Number(customer.totalAdvance) || 0 : 0;
+
+  const maxAdvanceApplicable =
+    customer && customerAdvanceBalance > 0
+      ? Math.min(customerAdvanceBalance, grandTotal)
+      : 0;
+
+  useEffect(() => {
+    if (!open) return;
+    setAdvanceApplied(0);
+    setNote("");
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (advanceApplied > maxAdvanceApplicable) {
+      setAdvanceApplied(maxAdvanceApplicable);
+    }
+  }, [open, maxAdvanceApplicable, advanceApplied]);
+
+  const dueAfterAdvance = Math.max(0, grandTotal - advanceApplied);
 
   const handleSubmit = async () => {
-    await onConfirm(note);
-    setNote("");
+    await onConfirm({
+      note,
+      advanceApplied: advanceApplied > 0 ? advanceApplied : undefined,
+    });
   };
 
   return (
@@ -83,10 +109,10 @@ export function PayLaterModal({
         <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
           <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-semibold text-amber-700 mb-1">No changes will be made now</p>
+            <p className="text-sm font-semibold text-amber-700 mb-1">Invoice saved with due</p>
             <p className="text-xs text-amber-600">
-              Stock will not reduce and no transaction will be created.
-              Payment and order will be processed when customer pays.
+              The sale is saved with due amount. Stock is reserved/sold per system rules.
+              Any advance you apply now reduces the customer wallet and the invoice due.
             </p>
           </div>
         </div>
@@ -171,6 +197,59 @@ export function PayLaterModal({
           </div>
           <span className="text-lg font-bold text-indigo-600">{formatPrice(grandTotal)}</span>
         </div>
+
+        {customer && customerAdvanceBalance > 0 ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+                Apply customer advance
+              </span>
+              <span className="text-sm font-bold tabular-nums text-emerald-800">
+                {formatPrice(customerAdvanceBalance)} avail.
+              </span>
+            </div>
+            <p className="mt-1 text-[10px] text-emerald-800/80">
+              Due after advance: {formatPrice(dueAfterAdvance)} (max apply {formatPrice(maxAdvanceApplicable)}).
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setAdvanceApplied(maxAdvanceApplicable)}
+                disabled={maxAdvanceApplicable <= 0}
+                className="rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+              >
+                Use full
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdvanceApplied(0)}
+                disabled={advanceApplied <= 0}
+                className="rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-40"
+              >
+                Clear
+              </button>
+            </div>
+            <label className="mt-2 block text-[10px] font-semibold text-emerald-800">Amount</label>
+            <input
+              type="number"
+              min={0}
+              max={maxAdvanceApplicable}
+              step="0.01"
+              value={advanceApplied || ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") {
+                  setAdvanceApplied(0);
+                  return;
+                }
+                const num = parseFloat(v);
+                if (!Number.isFinite(num) || num < 0) return;
+                setAdvanceApplied(Math.min(num, maxAdvanceApplicable));
+              }}
+              className="mt-1 w-full h-8 rounded-lg border border-emerald-200 bg-white px-2 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+        ) : null}
 
         {/* Note */}
         <div>

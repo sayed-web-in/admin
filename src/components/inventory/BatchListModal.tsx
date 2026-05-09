@@ -10,7 +10,7 @@ import {
   formatBatchType,
   mapListBatches,
 } from "@/components/inventory/batch-modals-shared";
-import { formatPrice } from "@/lib/utils";
+import { formatDate, formatPrice } from "@/lib/utils";
 
 export interface BatchListModalProps {
   open: boolean;
@@ -153,7 +153,11 @@ export function BatchListModal({
                     </td>
                     <td className="px-3 py-2 align-middle text-[0.875rem] text-muted-foreground">
                       {batch.batchDate
-                        ? new Date(batch.batchDate).toLocaleDateString()
+                        ? formatDate(
+                            typeof batch.batchDate === "string"
+                              ? batch.batchDate
+                              : new Date(batch.batchDate).toISOString(),
+                          )
                         : "—"}
                     </td>
                     <td className="px-3 py-2 align-middle text-[0.875rem]">

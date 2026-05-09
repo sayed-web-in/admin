@@ -49,6 +49,7 @@ interface Supplier {
   address?: string | null;
   isActive: boolean;
   totalDue: number;
+  advanceBalance?: number | string | null;
 }
 
 export default function SuppliersPage() {
@@ -72,6 +73,7 @@ export default function SuppliersPage() {
     company: "",
     address: "",
     isActive: true,
+    advanceBalance: "",
   });
 
   useEffect(() => {
@@ -146,6 +148,7 @@ export default function SuppliersPage() {
       company: "",
       address: "",
       isActive: true,
+      advanceBalance: "",
     });
   };
 
@@ -153,6 +156,9 @@ export default function SuppliersPage() {
     if (!form.name.trim()) return;
     setSaving(true);
     try {
+      const openAdv = form.advanceBalance.trim();
+      const openAdvNum =
+        openAdv === "" ? undefined : Math.max(0, Number(openAdv));
       await apiFetch("/suppliers", {
         method: "POST",
         body: JSON.stringify({
@@ -162,6 +168,11 @@ export default function SuppliersPage() {
           company: form.company.trim() || undefined,
           address: form.address.trim() || undefined,
           isActive: form.isActive,
+          ...(openAdvNum !== undefined &&
+          Number.isFinite(openAdvNum) &&
+          openAdvNum > 0
+            ? { advanceBalance: openAdvNum }
+            : {}),
         }),
       });
       setAddModal(false);
@@ -183,6 +194,10 @@ export default function SuppliersPage() {
       company: supplier.company || "",
       address: supplier.address || "",
       isActive: supplier.isActive,
+      advanceBalance:
+        supplier.advanceBalance != null
+          ? String(Number(supplier.advanceBalance))
+          : "",
     });
     setEditModal(true);
   };
@@ -191,6 +206,9 @@ export default function SuppliersPage() {
     if (!selectedSupplier) return;
     setSaving(true);
     try {
+      const advRaw = form.advanceBalance.trim();
+      const advNum =
+        advRaw === "" ? undefined : Math.max(0, Number(advRaw));
       await apiFetch(`/suppliers/${selectedSupplier.id}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -200,6 +218,9 @@ export default function SuppliersPage() {
           company: form.company.trim() || undefined,
           address: form.address.trim() || undefined,
           isActive: form.isActive,
+          ...(advNum !== undefined && Number.isFinite(advNum)
+            ? { advanceBalance: advNum }
+            : {}),
         }),
       });
       setEditModal(false);
@@ -297,6 +318,26 @@ export default function SuppliersPage() {
       <div>
         <label className="mb-1.5 block text-sm font-medium">Address</label>
         <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Full address" />
+      </div>
+      <div>
+        <label className="mb-1.5 block text-sm font-medium">
+          Opening advance balance {!isEdit && "(optional)"}
+        </label>
+        <Input
+          type="number"
+          min={0}
+          step="0.01"
+          value={form.advanceBalance}
+          onChange={(e) =>
+            setForm({ ...form, advanceBalance: e.target.value })
+          }
+          placeholder={isEdit ? "Leave blank to keep current" : "0.00"}
+        />
+        {isEdit ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Set amount to update; leave blank to leave advance unchanged.
+          </p>
+        ) : null}
       </div>
       <div>
         <label className="mb-1.5 block text-sm font-medium">Status</label>

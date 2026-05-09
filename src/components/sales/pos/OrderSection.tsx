@@ -41,12 +41,13 @@ interface OrderSectionProps {
   onSetDiscount: (value: number) => void;
   onAddService: (service: { id: number; name: string; price: number }) => void;
   onRemoveService: (serviceId: number) => void;
-  onPayLater: (note: string) => Promise<void>;
+  onPayLater: (opts: { note: string; advanceApplied?: number }) => Promise<void>;
   onComplete: (opts: {
     paymentMethod: string;
     receivedAmount: number;
     payments?: Array<{ id: string; accountId: string; amount: number | "" }>;
     note: string;
+    advanceApplied?: number;
   }) => Promise<boolean>;
   onEditUnitPrice: (id: number, price: number) => void;
 }
@@ -270,8 +271,8 @@ export function OrderSection({
         appliedServices={appliedServices}
         loading={loading}
         onOpenChange={setShowPayLaterModal}
-        onConfirm={async (note) => {
-          await onPayLater(note);
+        onConfirm={async (opts) => {
+          await onPayLater(opts);
           setShowPayLaterModal(false);
         }}
       />

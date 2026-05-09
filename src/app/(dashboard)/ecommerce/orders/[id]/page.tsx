@@ -15,7 +15,7 @@ import {
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media";
-import { formatPrice, cn } from "@/lib/utils";
+import { formatPrice, cn, formatDateTimeFullShort, formatDateTimeMedShort } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -467,10 +467,7 @@ export default function EcommerceOrderDetailPage() {
       <InventoryListPageHeader
         icon={Package}
         title={order.orderNumber}
-        description={`Placed ${new Date(order.createdAt).toLocaleString(undefined, {
-          dateStyle: "full",
-          timeStyle: "short",
-        })} · ${order.items.length} line(s)`}
+        description={`Placed ${formatDateTimeFullShort(new Date(order.createdAt).toISOString())} · ${order.items.length} line(s)`}
       >
         <StatusBadge status={order.status} />
       </InventoryListPageHeader>
@@ -585,7 +582,7 @@ export default function EcommerceOrderDetailPage() {
                       </p>
                     )}
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {new Date(t.createdAt).toLocaleString()}
+                      {formatDateTimeMedShort(new Date(t.createdAt).toISOString())}
                     </p>
                   </div>
                 </li>

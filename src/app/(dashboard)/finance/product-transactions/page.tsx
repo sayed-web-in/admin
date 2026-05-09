@@ -76,19 +76,8 @@ interface ListResponse {
   totalPages: number;
 }
 
-const orderTypeLabel = (t: string) =>
-  t === "wholesale" ? "Wholesale" : t === "quick_sell" ? "Quick Sell" : "POS";
-
-const orderTypeBadgeClass = (t: string) =>
-  cn(
-    "inline-flex rounded-md border px-2 py-0.5 text-xs font-medium",
-    t === "wholesale" &&
-      "border-purple-500/30 bg-purple-500/15 text-purple-700 dark:text-purple-300",
-    t === "quick_sell" &&
-      "border-amber-500/30 bg-amber-500/15 text-amber-800 dark:text-amber-300",
-    (t === "pos" || !t || (t !== "wholesale" && t !== "quick_sell")) &&
-      "border-blue-500/30 bg-blue-500/15 text-blue-800 dark:text-blue-300"
-  );
+const orderTypeBadgeClass = () =>
+  "inline-flex rounded-md border px-2 py-0.5 text-xs font-medium border-blue-500/30 bg-blue-500/15 text-blue-800 dark:text-blue-300";
 
 const getDateRange = (preset: string) => {
   const now = new Date();
@@ -132,7 +121,6 @@ export default function ProductTransactionsPage() {
     return () => window.removeEventListener("branch-changed", h);
   }, []);
 
-  const [orderType, setOrderType] = useState("");
   const [datePreset, setDatePreset] = useState("month");
   const [page, setPage] = useState(1);
 
@@ -159,10 +147,9 @@ export default function ProductTransactionsPage() {
       p.set("page", String(extraPage ?? page));
       p.set("limit", String(LIMIT));
       if (branchId != null) p.set("branchId", String(branchId));
-      if (orderType) p.set("orderType", orderType);
       return p;
     },
-    [datePreset, page, branchId, orderType]
+    [datePreset, page, branchId]
   );
 
   const fetchPage = useCallback(
@@ -197,7 +184,6 @@ export default function ProductTransactionsPage() {
       p.set("page", "1");
       p.set("limit", "99999");
       if (branchId != null) p.set("branchId", String(branchId));
-      if (orderType) p.set("orderType", orderType);
       const json = await apiFetch<ListResponse>(
         `/sales/product-transactions?${p.toString()}`
       );
@@ -234,14 +220,14 @@ export default function ProductTransactionsPage() {
     } finally {
       setStatsLoading(false);
     }
-  }, [datePreset, branchId, orderType]);
+  }, [datePreset, branchId]);
 
   useEffect(() => {
     setPage(1);
     void fetchPage(1);
     void fetchStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset page on filter change
-  }, [datePreset, branchId, orderType]);
+  }, [datePreset, branchId]);
 
   const handlePageChange = (p: number) => {
     setPage(p);
@@ -276,11 +262,9 @@ export default function ProductTransactionsPage() {
     },
     {
       key: "channel",
-      label: "Channel",
-      render: (row: RawItem) => (
-        <span className={orderTypeBadgeClass(row.saleOrder.orderType)}>
-          {orderTypeLabel(row.saleOrder.orderType)}
-        </span>
+      label: "Source",
+      render: () => (
+        <span className={orderTypeBadgeClass()}>POS</span>
       ),
     },
     {
@@ -401,7 +385,7 @@ export default function ProductTransactionsPage() {
       <InventoryListPageHeader
         icon={Package}
         title="Product Transactions"
-        description="Product-wise sales, cost and profit — POS, Quick Sell, Wholesale. Revenue uses each order's net product total (grand total minus services), split across lines so coupons, gift cards, VIP, and order discounts match accounting."
+        description="Every POS sale line appears here with net revenue (share of invoice after discount) and net profit vs average purchase cost from batches — same idea as seller-admin product profit."
       >
         <Button
           type="button"
@@ -460,7 +444,7 @@ export default function ProductTransactionsPage() {
             compact
             icon={Layers}
             title="Filters"
-            description="Date range, channel, and branch (from header)."
+            description="Date range and branch (header). All rows are POS / branch sales."
           />
         </div>
         <div className="flex flex-wrap gap-3 p-5 sm:p-6 md:p-7">
@@ -473,16 +457,6 @@ export default function ProductTransactionsPage() {
             <option value="week">This Week</option>
             <option value="month">This Month</option>
             <option value="year">This Year</option>
-          </select>
-          <select
-            value={orderType}
-            onChange={(e) => setOrderType(e.target.value)}
-            className="h-10 min-w-[150px] rounded-xl border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">All Channels</option>
-            <option value="pos">POS</option>
-            <option value="quick_sell">Quick Sell</option>
-            <option value="wholesale">Wholesale</option>
           </select>
           <Badge variant="outline" className="h-10 items-center px-3 text-sm font-normal">
             Branch: from header{branchId != null ? ` (#${branchId})` : " (all)"}
@@ -540,7 +514,7 @@ export default function ProductTransactionsPage() {
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>{orderTypeLabel(row.saleOrder.orderType)}</span>
+                      <span>POS</span>
                       <span>·</span>
                       <span>Qty: {qty}</span>
                       <span>·</span>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ShoppingBag, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, formatDateTimeMedShort } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -158,10 +158,9 @@ export default function EcommerceOrdersPage() {
                       <div className="text-xs text-muted-foreground">{o.phone}</div>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {new Date(o.createdAt).toLocaleString(undefined, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
+                      {formatDateTimeMedShort(
+                        new Date(o.createdAt).toISOString(),
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={o.status} />
