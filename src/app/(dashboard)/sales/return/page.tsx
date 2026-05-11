@@ -1,5 +1,7 @@
 "use client";
+
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   RotateCcw,
@@ -7,7 +9,6 @@ import {
   DollarSign,
   Plus,
   Eye,
-  Search,
   LayoutGrid,
   Layers,
 } from "lucide-react";
@@ -24,7 +25,6 @@ import { StatCard } from "@/components/common/StatCard";
 import { FilterBar } from "@/components/common/FilterBar";
 import { DataTable } from "@/components/common/DataTable";
 import { InventoryTablePagination } from "@/components/inventory/InventoryTablePagination";
-import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -42,6 +42,7 @@ interface ReturnItem {
 
 interface SaleReturn {
   id: number;
+  status?: string;
   sale?: {
     id: number;
     invoiceNumber: string;
@@ -51,29 +52,11 @@ interface SaleReturn {
   reason: string;
   items: ReturnItem[];
   totalAmount: number;
+  refundAmount?: number;
+  returnGain?: number;
+  pendingCashRefund?: number | string;
+  cashRefundPaid?: number | string;
   createdAt: string;
-}
-
-interface SaleForReturn {
-  id: number;
-  invoiceNumber: string;
-  customer?: { name: string };
-  items: {
-    id: number;
-    quantity: number;
-    unitPrice: number;
-    storeProductId: number;
-    storeProduct?: { product?: { name: string } };
-  }[];
-}
-
-interface ReturnQty {
-  saleItemId: number;
-  storeProductId: number;
-  quantity: number;
-  maxQty: number;
-  unitPrice: number;
-  name: string;
 }
 
 export default function SalesReturnPage() {
@@ -90,17 +73,9 @@ export default function SalesReturnPage() {
     total: 0,
     todayReturns: 0,
     totalAmount: 0,
+    totalRefund: 0,
+    totalGain: 0,
   });
-  const [addModal, setAddModal] = useState(false);
-  const [viewModal, setViewModal] = useState(false);
-  const [selectedReturn, setSelectedReturn] = useState<SaleReturn | null>(null);
-
-  const [invoiceSearch, setInvoiceSearch] = useState("");
-  const [saleForReturn, setSaleForReturn] = useState<SaleForReturn | null>(null);
-  const [returnItems, setReturnItems] = useState<ReturnQty[]>([]);
-  const [returnReason, setReturnReason] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [searchingInvoice, setSearchingInvoice] = useState(false);
   const branchId = getSelectedBranch();
 
   useEffect(() => {
@@ -132,9 +107,11 @@ export default function SalesReturnPage() {
         total: Number(body.total) || 0,
         todayReturns: Number(body.todayReturns) || 0,
         totalAmount: Number(body.totalReturnAmount) || 0,
+        totalRefund: Number(body.totalRefundAmount) || 0,
+        totalGain: Number(body.totalReturnGain) || 0,
       });
     } catch {
-      setStats({ total: 0, todayReturns: 0, totalAmount: 0 });
+      setStats({ total: 0, todayReturns: 0, totalAmount: 0, totalRefund: 0, totalGain: 0 });
     }
   }, [summaryParams]);
 
@@ -179,112 +156,6 @@ export default function SalesReturnPage() {
     void Promise.all([fetchReturns(), loadSummary()]);
   };
 
-  const searchInvoice = async () => {
-    if (!invoiceSearch.trim()) return;
-    setSearchingInvoice(true);
-    try {
-      const qs = new URLSearchParams({
-        search: invoiceSearch.trim(),
-        page: "1",
-        limit: "5",
-      });
-      if (branchId) qs.set("branchId", String(branchId));
-      const res = await apiFetch<unknown>(`/sales?${qs}`);
-      const p = unwrapPaginated<{ id: number }>(res);
-      const list = p?.data ?? [];
-      if (list.length === 0) {
-        alert("Sale not found");
-        setSaleForReturn(null);
-        return;
-      }
-      const sale = list[0] as SaleForReturn;
-      let full: SaleForReturn;
-      try {
-        full = await apiFetch<SaleForReturn>(`/sales/${sale.id}`);
-      } catch {
-        full = sale;
-      }
-      setSaleForReturn(full);
-      setReturnItems(
-        (full.items || []).map((item) => ({
-          saleItemId: item.id,
-          storeProductId: item.storeProductId,
-          quantity: 0,
-          maxQty: item.quantity,
-          unitPrice: item.unitPrice,
-          name: item.storeProduct?.product?.name || "Product",
-        }))
-      );
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Search failed");
-      setSaleForReturn(null);
-    } finally {
-      setSearchingInvoice(false);
-    }
-  };
-
-  const updateReturnQty = (saleItemId: number, qty: number) => {
-    setReturnItems((prev) =>
-      prev.map((item) =>
-        item.saleItemId === saleItemId
-          ? { ...item, quantity: Math.min(Math.max(0, qty), item.maxQty) }
-          : item
-      )
-    );
-  };
-
-  const handleSubmitReturn = async () => {
-    const itemsToReturn = returnItems.filter((i) => i.quantity > 0);
-    if (itemsToReturn.length === 0) {
-      alert("Select at least one item to return");
-      return;
-    }
-    if (!returnReason.trim()) {
-      alert("Please provide a reason");
-      return;
-    }
-    setSaving(true);
-    try {
-      await apiFetch("/sales/return", {
-        method: "POST",
-        body: JSON.stringify({
-          saleId: saleForReturn?.id,
-          reason: returnReason,
-          items: itemsToReturn.map((i) => ({
-            storeProductId: i.storeProductId,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-          })),
-        }),
-      });
-      setAddModal(false);
-      setSaleForReturn(null);
-      setReturnItems([]);
-      setReturnReason("");
-      setInvoiceSearch("");
-      await Promise.all([fetchReturns(), loadSummary()]);
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Submit failed");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const openAdd = () => {
-    setSaleForReturn(null);
-    setReturnItems([]);
-    setReturnReason("");
-    setInvoiceSearch("");
-    setAddModal(true);
-  };
-
-  const openView = (ret: SaleReturn) => {
-    setSelectedReturn(ret);
-    setViewModal(true);
-  };
-
-  const returnTotal = returnItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-
   const columns = [
     {
       key: "index",
@@ -297,6 +168,22 @@ export default function SalesReturnPage() {
       label: "Sale Invoice",
       render: (item: SaleReturn) =>
         item.sale?.invoiceNumber || item.saleInvoice || "—",
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (item: SaleReturn) => {
+        const s = (item.status ?? "completed").toLowerCase();
+        const cls =
+          s === "pending"
+            ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+            : "border-border bg-muted/40 text-muted-foreground";
+        return (
+          <span className={`rounded-md border px-2 py-0.5 text-xs font-medium capitalize ${cls}`}>
+            {s.replace(/_/g, " ")}
+          </span>
+        );
+      },
     },
     {
       key: "reason",
@@ -313,8 +200,19 @@ export default function SalesReturnPage() {
     },
     {
       key: "totalAmount",
-      label: "Total",
+      label: "Gross",
       render: (item: SaleReturn) => formatPrice(Number(item.totalAmount)),
+    },
+    {
+      key: "refund",
+      label: "Refund",
+      render: (item: SaleReturn) =>
+        formatPrice(Number(item.refundAmount ?? item.totalAmount)),
+    },
+    {
+      key: "gain",
+      label: "Gain",
+      render: (item: SaleReturn) => formatPrice(Number(item.returnGain ?? 0)),
     },
     {
       key: "createdAt",
@@ -325,8 +223,10 @@ export default function SalesReturnPage() {
       key: "actions",
       label: "Actions",
       render: (item: SaleReturn) => (
-        <Button variant="ghost" size="sm" onClick={() => openView(item)}>
-          <Eye size={14} />
+        <Button variant="ghost" size="sm" asChild>
+          <Link href={`/sales/return/${item.id}`}>
+            <Eye size={14} />
+          </Link>
         </Button>
       ),
     },
@@ -337,7 +237,7 @@ export default function SalesReturnPage() {
       <InventoryListPageHeader
         icon={RotateCcw}
         title="Sales Returns"
-        description="Record returns against completed sales — same layout as sales history and inventory lists."
+        description="Create from invoice; cash refund is recorded from the return detail page (seller-admin style modal)."
       >
         <Button
           type="button"
@@ -358,13 +258,11 @@ export default function SalesReturnPage() {
           <RotateCcw className="h-4 w-4 shrink-0" aria-hidden />
           Refresh
         </Button>
-        <Button
-          type="button"
-          className="h-10 w-full gap-2 rounded-xl shadow-sm sm:h-9 sm:w-auto"
-          onClick={openAdd}
-        >
-          <Plus className="h-4 w-4 shrink-0" aria-hidden />
-          Add return
+        <Button type="button" className="h-10 w-full gap-2 rounded-xl shadow-sm sm:h-9 sm:w-auto" asChild>
+          <Link href="/sales/return/create">
+            <Plus className="h-4 w-4 shrink-0" />
+            Add return
+          </Link>
         </Button>
       </InventoryListPageHeader>
 
@@ -373,16 +271,14 @@ export default function SalesReturnPage() {
           <InventorySectionHeader
             icon={LayoutGrid}
             title="Overview"
-            description="Counts and return value from GET /sales/returns/summary with your filters."
+            description="Counts, gross return value, refunds, and return gain (damage retention)."
           />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard title="Total Returns" value={stats.total} icon={RotateCcw} />
             <StatCard title="Today's Returns" value={stats.todayReturns} icon={CalendarDays} />
-            <StatCard
-              title="Total Return Amount"
-              value={formatPrice(stats.totalAmount)}
-              icon={DollarSign}
-            />
+            <StatCard title="Gross returned" value={formatPrice(stats.totalAmount)} icon={DollarSign} />
+            <StatCard title="Refunded" value={formatPrice(stats.totalRefund)} icon={DollarSign} />
+            <StatCard title="Return gain" value={formatPrice(stats.totalGain)} icon={DollarSign} />
           </div>
         </section>
 
@@ -392,7 +288,7 @@ export default function SalesReturnPage() {
               compact
               icon={Layers}
               title="Return log"
-              description={`Paginated (${PAGE_SIZE} per page). Search matches invoice or reason.`}
+              description={`Paginated (${PAGE_SIZE} per page). Open a row for accounting detail.`}
             />
           </div>
           <div className="space-y-4 p-5 sm:p-6 md:p-7">
@@ -425,172 +321,6 @@ export default function SalesReturnPage() {
           </div>
         </section>
       </div>
-
-      <Modal
-        open={addModal}
-        onOpenChange={setAddModal}
-        title="Create Sales Return"
-        className="max-w-xl"
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Search Sale Invoice</label>
-            <div className="flex gap-2">
-              <Input
-                placeholder="Enter invoice number..."
-                value={invoiceSearch}
-                onChange={(e) => setInvoiceSearch(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && searchInvoice()}
-              />
-              <Button type="button" onClick={searchInvoice} disabled={searchingInvoice}>
-                <Search size={16} />
-              </Button>
-            </div>
-          </div>
-
-          {saleForReturn && (
-            <>
-              <div className="rounded-lg bg-muted/50 p-3 text-sm">
-                <p>
-                  <strong>Invoice:</strong> {saleForReturn.invoiceNumber}
-                </p>
-                <p>
-                  <strong>Customer:</strong>{" "}
-                  {saleForReturn.customer?.name || "Walking Customer"}
-                </p>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">
-                  Select items and quantity to return
-                </label>
-                <div className="divide-y divide-border rounded-lg border border-border">
-                  {returnItems.map((item) => (
-                    <div
-                      key={item.saleItemId}
-                      className="flex items-center justify-between px-3 py-2"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Max: {item.maxQty} &middot; {formatPrice(item.unitPrice)} each
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          value={item.quantity || ""}
-                          onChange={(e) =>
-                            updateReturnQty(item.saleItemId, Number(e.target.value))
-                          }
-                          className="h-8 w-20 text-center text-sm"
-                          min={0}
-                          max={item.maxQty}
-                          placeholder="0"
-                        />
-                        <span className="w-20 text-right text-sm font-medium">
-                          {formatPrice(item.quantity * item.unitPrice)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {returnTotal > 0 && (
-                  <div className="mt-2 flex justify-between text-sm font-semibold">
-                    <span>Return Total</span>
-                    <span className="text-primary">{formatPrice(returnTotal)}</span>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">
-                  Reason <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  className="flex min-h-[80px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  value={returnReason}
-                  onChange={(e) => setReturnReason(e.target.value)}
-                  placeholder="Why is this being returned?"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setAddModal(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSubmitReturn}
-                  disabled={saving || returnItems.every((i) => i.quantity === 0)}
-                >
-                  {saving ? "Submitting..." : "Submit Return"}
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      </Modal>
-
-      <Modal
-        open={viewModal}
-        onOpenChange={setViewModal}
-        title="Return Details"
-        className="max-w-md"
-      >
-        {selectedReturn && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="text-muted-foreground">Sale Invoice</p>
-                <p className="font-medium">
-                  {selectedReturn.sale?.invoiceNumber ||
-                    selectedReturn.saleInvoice ||
-                    "—"}
-                </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Customer</p>
-                <p className="font-medium">
-                  {selectedReturn.sale?.customer?.name || "Walking Customer"}
-                </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Date</p>
-                <p className="font-medium">{formatDate(selectedReturn.createdAt)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Total</p>
-                <p className="font-medium text-primary">
-                  {formatPrice(Number(selectedReturn.totalAmount))}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-sm text-muted-foreground">Reason</p>
-              <p className="mt-1 text-sm">{selectedReturn.reason || "—"}</p>
-            </div>
-
-            {selectedReturn.items && selectedReturn.items.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-sm font-semibold">Returned Items</h4>
-                <div className="divide-y divide-border rounded-lg border border-border">
-                  {selectedReturn.items.map((item) => (
-                    <div key={item.id} className="flex justify-between px-3 py-2 text-sm">
-                      <span>
-                        {item.storeProduct?.product?.name || "Product"} x{item.quantity}
-                      </span>
-                      <span className="font-medium">
-                        {formatPrice(item.unitPrice * item.quantity)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }

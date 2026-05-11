@@ -1,5 +1,7 @@
 "use client";
+
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   RotateCcw,
@@ -7,14 +9,18 @@ import {
   CalendarDays,
   Plus,
   Eye,
-  Search,
   LayoutGrid,
   Layers,
+  Download,
+  Printer,
+  ArrowLeftRight,
+  User,
+  Package,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatPrice, formatDate } from "@/lib/utils";
 import { getSelectedBranch } from "@/lib/auth";
-import { unwrapPaginated } from "@/lib/apiList";
+import { unwrapPaginated, extractBranches, extractApiList } from "@/lib/apiList";
 import {
   INVENTORY_CARD_SHELL,
   InventoryListPageHeader,
@@ -29,23 +35,12 @@ import {
   TableRowActionButton,
   tableActionIconClassName,
 } from "@/components/common/TableRowActions";
-import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 const PAGE_SIZE = 20;
 const filterFieldClass =
   "h-10 rounded-xl border border-input bg-background/80 px-3 text-sm shadow-sm backdrop-blur-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-40";
-
-interface ReturnItem {
-  id: number;
-  quantity: number;
-  unitCost: number;
-  storeProduct?: {
-    product?: { name: string };
-    productVariant?: { attributes?: { attributeValue?: { value: string } | null }[] } | null;
-  };
-}
 
 interface PurchaseReturn {
   id: number;
@@ -57,53 +52,50 @@ interface PurchaseReturn {
   };
   purchaseRef?: string;
   reason: string;
-  items: ReturnItem[];
+  items: { id: number; quantity: number }[];
   totalAmount: number;
   createdAt: string;
 }
 
-interface PurchaseForReturn {
+interface Branch {
   id: number;
-  referenceNo: string;
-  supplier?: { name: string };
-  items: {
-    id: number;
-    quantity: number;
-    unitCost: number;
-    storeProductId: number;
-    storeProduct?: {
-      product?: { name: string };
-      productVariant?: { attributes?: { attributeValue?: { value: string } | null }[] } | null;
-    };
-  }[];
+  name: string;
+}
+interface Supplier {
+  id: number;
+  name: string;
 }
 
-interface ReturnQty {
-  purchaseItemId: number;
-  storeProductId: number;
-  quantity: number;
-  maxQty: number;
-  unitCost: number;
-  name: string;
+function escapeHtml(text: string): string {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function getTodayLocalDate(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function totalQty(ret: PurchaseReturn): number {
+  return (ret.items ?? []).reduce((s, it) => s + (Number(it.quantity) || 0), 0);
 }
 
 export default function PurchaseReturnPage() {
   const router = useRouter();
   const [returns, setReturns] = useState<PurchaseReturn[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [addModal, setAddModal] = useState(false);
-  const [viewModal, setViewModal] = useState(false);
-  const [selectedReturn, setSelectedReturn] = useState<PurchaseReturn | null>(null);
-  const [refSearch, setRefSearch] = useState("");
-  const [purchaseForReturn, setPurchaseForReturn] = useState<PurchaseForReturn | null>(null);
-  const [returnItems, setReturnItems] = useState<ReturnQty[]>([]);
-  const [returnReason, setReturnReason] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [searchingRef, setSearchingRef] = useState(false);
+  const [branchFilter, setBranchFilter] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState("");
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ page: 1, lastPage: 1, total: 0 });
   const [stats, setStats] = useState({ total: 0, totalAmount: 0, todayReturns: 0 });
@@ -116,16 +108,18 @@ export default function PurchaseReturnPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, dateFrom, dateTo, selectedBranchId]);
+  }, [debouncedSearch, dateFrom, dateTo, branchFilter, supplierFilter, selectedBranchId]);
 
   const buildCommonParams = useCallback(() => {
     const qs = new URLSearchParams();
     if (selectedBranchId) qs.set("branchId", String(selectedBranchId));
+    if (branchFilter) qs.set("branchId", branchFilter);
     if (debouncedSearch) qs.set("search", debouncedSearch);
+    if (supplierFilter) qs.set("supplierId", supplierFilter);
     if (dateFrom) qs.set("dateFrom", dateFrom);
     if (dateTo) qs.set("dateTo", dateTo);
     return qs;
-  }, [selectedBranchId, debouncedSearch, dateFrom, dateTo]);
+  }, [selectedBranchId, branchFilter, debouncedSearch, supplierFilter, dateFrom, dateTo]);
 
   const fetchReturns = useCallback(async () => {
     setLoading(true);
@@ -174,115 +168,69 @@ export default function PurchaseReturnPage() {
     void loadSummary();
   }, [loadSummary]);
 
+  useEffect(() => {
+    apiFetch<unknown>("/branches")
+      .then((d) => setBranches(extractBranches(d)))
+      .catch(() => {});
+    apiFetch<unknown>("/suppliers?limit=500&isActive=true")
+      .then((d) => setSuppliers(extractApiList<Supplier>(d, ["suppliers"])))
+      .catch(() => {});
+  }, []);
+
   const refresh = () => {
     void Promise.all([fetchReturns(), loadSummary()]);
   };
 
-  const searchPurchase = async () => {
-    if (!refSearch.trim()) return;
-    setSearchingRef(true);
-    try {
-      const qs = new URLSearchParams({
-        search: refSearch.trim(),
-        page: "1",
-        limit: "5",
-      });
-      if (selectedBranchId) qs.set("branchId", String(selectedBranchId));
-      const res = await apiFetch<unknown>(`/purchases?${qs.toString()}`);
-      const p = unwrapPaginated<{ id: number }>(res);
-      const list = p?.data ?? [];
-      if (list.length === 0) {
-        alert("Purchase not found");
-        setPurchaseForReturn(null);
-        return;
-      }
-      const purchase = list[0] as PurchaseForReturn;
-      let full: PurchaseForReturn;
-      try {
-        full = await apiFetch<PurchaseForReturn>(`/purchases/${purchase.id}`);
-      } catch {
-        full = purchase;
-      }
-      setPurchaseForReturn(full);
-      setReturnItems(
-        (full.items || []).map((item) => ({
-          purchaseItemId: item.id,
-          storeProductId: item.storeProductId,
-          quantity: 0,
-          maxQty: item.quantity,
-          unitCost: item.unitCost,
-          name: item.storeProduct?.product?.name || "Product",
-        }))
-      );
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Search failed");
-      setPurchaseForReturn(null);
-    } finally {
-      setSearchingRef(false);
-    }
-  };
-
-  const updateReturnQty = (purchaseItemId: number, qty: number) => {
-    setReturnItems((prev) =>
-      prev.map((item) =>
-        item.purchaseItemId === purchaseItemId
-          ? { ...item, quantity: Math.min(Math.max(0, qty), item.maxQty) }
-          : item
+  const handlePrint = () => {
+    if (returns.length === 0) return;
+    const rows = returns
+      .map(
+        (r, i) =>
+          `<tr><td>${i + 1}</td><td>${escapeHtml(formatDate(r.createdAt))}</td><td>${escapeHtml(r.purchase?.branch?.name ?? "—")}</td><td>${r.items?.length ?? 0}</td><td>${totalQty(r)}</td><td>${escapeHtml(r.purchase?.supplier?.name ?? "—")}</td><td>${escapeHtml(r.purchase?.referenceNo ?? r.purchaseRef ?? "—")}</td><td>${escapeHtml(String(r.reason ?? "").slice(0, 80))}</td><td>${escapeHtml(formatPrice(Number(r.totalAmount)))}</td></tr>`
       )
-    );
-  };
-
-  const handleSubmitReturn = async () => {
-    const itemsToReturn = returnItems.filter((i) => i.quantity > 0);
-    if (itemsToReturn.length === 0) {
-      alert("Select at least one item to return");
-      return;
-    }
-    if (!returnReason.trim()) {
-      alert("Please provide a reason");
-      return;
-    }
-    setSaving(true);
-    try {
-      await apiFetch("/purchases/return", {
-        method: "POST",
-        body: JSON.stringify({
-          purchaseId: purchaseForReturn?.id,
-          reason: returnReason,
-          items: itemsToReturn.map((i) => ({
-            storeProductId: i.storeProductId,
-            quantity: i.quantity,
-            unitCost: i.unitCost,
-          })),
-        }),
-      });
-      setAddModal(false);
-      setPurchaseForReturn(null);
-      setReturnItems([]);
-      setReturnReason("");
-      setRefSearch("");
-      await Promise.all([fetchReturns(), loadSummary()]);
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Submit failed");
-    } finally {
-      setSaving(false);
+      .join("");
+    const html = `<!DOCTYPE html><html><head><title>Purchase returns</title><style>body{font-family:system-ui,sans-serif;padding:16px;}table{width:100%;border-collapse:collapse;font-size:12px;}th,td{border:1px solid #ccc;padding:6px 8px;}th{background:#4f46e5;color:#fff;}</style></head><body><h1>Purchase returns</h1><p style="font-size:11px;color:#666;">Generated: ${new Date().toLocaleString()}</p><table><thead><tr><th>#</th><th>Date</th><th>Branch</th><th>Lines</th><th>Qty</th><th>Supplier</th><th>Purchase</th><th>Reason</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(html);
+      doc.close();
+      const trigger = () => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          if (document.body.contains(iframe)) document.body.removeChild(iframe);
+        }, 800);
+      };
+      iframe.onload = () => setTimeout(trigger, 200);
     }
   };
 
-  const openAdd = () => {
-    setPurchaseForReturn(null);
-    setReturnItems([]);
-    setReturnReason("");
-    setRefSearch("");
-    setAddModal(true);
+  const handleExport = () => {
+    if (returns.length === 0) return;
+    const headers = ["#", "Date", "Branch", "Lines", "Qty", "Supplier", "Purchase", "Reason", "Total"];
+    const rows = returns.map((r, i) => [
+      i + 1 + (page - 1) * PAGE_SIZE,
+      formatDate(r.createdAt),
+      `"${(r.purchase?.branch?.name ?? "—").replace(/"/g, '""')}"`,
+      r.items?.length ?? 0,
+      totalQty(r),
+      `"${(r.purchase?.supplier?.name ?? "—").replace(/"/g, '""')}"`,
+      `"${(r.purchase?.referenceNo ?? r.purchaseRef ?? "—").replace(/"/g, '""')}"`,
+      `"${String(r.reason ?? "").replace(/"/g, '""')}"`,
+      formatPrice(Number(r.totalAmount)),
+    ]);
+    const csvContent = [headers.map((h) => `"${h}"`).join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `purchase-returns-${getTodayLocalDate()}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
   };
-
-  const openView = (ret: PurchaseReturn) => {
-    setSelectedReturn(ret);
-    setViewModal(true);
-  };
-
-  const returnTotal = returnItems.reduce((s, i) => s + i.quantity * i.unitCost, 0);
 
   const columns = [
     {
@@ -292,9 +240,23 @@ export default function PurchaseReturnPage() {
       render: (_: PurchaseReturn, i: number) => (page - 1) * PAGE_SIZE + i + 1,
     },
     {
+      key: "dateBranch",
+      label: "Date / branch",
+      render: (item: PurchaseReturn) => (
+        <div>
+          <span className="font-medium">{formatDate(item.createdAt)}</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">{item.purchase?.branch?.name ?? "—"}</span>
+        </div>
+      ),
+    },
+    {
       key: "purchaseRef",
-      label: "Purchase Ref",
-      render: (item: PurchaseReturn) => item.purchase?.referenceNo || item.purchaseRef || "—",
+      label: "Purchase",
+      render: (item: PurchaseReturn) => (
+        <div>
+          <span className="font-medium">{item.purchase?.referenceNo || item.purchaseRef || "—"}</span>
+        </div>
+      ),
     },
     {
       key: "supplier",
@@ -302,32 +264,32 @@ export default function PurchaseReturnPage() {
       render: (item: PurchaseReturn) => item.purchase?.supplier?.name || "—",
     },
     {
-      key: "reason",
-      label: "Reason",
-      render: (item: PurchaseReturn) => <span className="line-clamp-1">{item.reason || "—"}</span>,
+      key: "linesQty",
+      label: "Lines / qty",
+      className: "text-center",
+      render: (item: PurchaseReturn) => `${item.items?.length ?? 0} / ${totalQty(item)}`,
     },
     {
-      key: "items",
-      label: "Items",
-      className: "text-center",
-      render: (item: PurchaseReturn) => item.items?.length || 0,
+      key: "reason",
+      label: "Reason",
+      render: (item: PurchaseReturn) => <span className="line-clamp-2 max-w-[14rem] text-muted-foreground">{item.reason || "—"}</span>,
     },
     {
       key: "totalAmount",
       label: "Total",
-      render: (item: PurchaseReturn) => formatPrice(Number(item.totalAmount)),
-    },
-    {
-      key: "createdAt",
-      label: "Date",
-      render: (item: PurchaseReturn) => formatDate(item.createdAt),
+      render: (item: PurchaseReturn) => <span className="font-medium">{formatPrice(Number(item.totalAmount))}</span>,
     },
     {
       key: "actions",
       label: "Actions",
       render: (item: PurchaseReturn) => (
         <TableRowActions>
-          <TableRowActionButton title="View" onClick={() => openView(item)}>
+          {item.purchase?.id ? (
+            <TableRowActionButton title="View purchase" onClick={() => router.push(`/purchases/${item.purchase!.id}`)}>
+              <ArrowLeftRight className={tableActionIconClassName} />
+            </TableRowActionButton>
+          ) : null}
+          <TableRowActionButton title="View return" onClick={() => router.push(`/purchases/return/${item.id}`)}>
             <Eye className={tableActionIconClassName} />
           </TableRowActionButton>
         </TableRowActions>
@@ -339,151 +301,113 @@ export default function PurchaseReturnPage() {
     <div className="w-full min-w-0 space-y-5 pb-8 pt-1 sm:space-y-6 sm:pb-10 sm:pt-2">
       <InventoryListPageHeader
         icon={RotateCcw}
-        title="Purchase Returns"
-        description="Log returned items against purchases with server-side filters and pagination."
+        title="Purchase returns"
+        description="Same flow as seller-admin: list with filters, print/export, create on a dedicated page, open a return for accounting details."
       >
-        <Button type="button" variant="outline" size="sm" className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto" onClick={() => router.back()}>
+        <Button type="button" variant="outline" size="sm" className="h-10 w-full gap-2 rounded-xl sm:h-9 sm:w-auto" onClick={() => router.back()}>
           Back
         </Button>
-        <Button type="button" variant="outline" size="sm" className="h-10 w-full gap-2 rounded-xl border-border/80 bg-background/80 backdrop-blur-sm sm:h-9 sm:w-auto" onClick={refresh}>
+        <Button type="button" variant="outline" size="sm" className="h-10 w-full gap-2 rounded-xl sm:h-9 sm:w-auto" onClick={refresh}>
           <RotateCcw className="h-4 w-4 shrink-0" /> Refresh
         </Button>
-        <Button type="button" className="h-10 w-full gap-2 rounded-xl shadow-sm sm:h-9 sm:w-auto" onClick={openAdd}>
-          <Plus className="h-4 w-4 shrink-0" /> Add Return
+        <Button type="button" variant="outline" size="sm" className="h-10 w-full gap-2 rounded-xl sm:h-9 sm:w-auto" disabled={returns.length === 0} onClick={handlePrint}>
+          <Printer className="h-4 w-4 shrink-0" /> Print
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="h-10 w-full gap-2 rounded-xl sm:h-9 sm:w-auto" disabled={returns.length === 0} onClick={handleExport}>
+          <Download className="h-4 w-4 shrink-0" /> Export CSV
+        </Button>
+        <Button type="button" className="h-10 w-full gap-2 rounded-xl shadow-sm sm:h-9 sm:w-auto" asChild>
+          <Link href="/purchases/return/create">
+            <Plus className="h-4 w-4 shrink-0" /> Create return
+          </Link>
         </Button>
       </InventoryListPageHeader>
 
       <div className="space-y-5 sm:space-y-6">
         <section className={`${INVENTORY_CARD_SHELL} p-5 sm:p-6 md:p-7`}>
-          <InventorySectionHeader icon={LayoutGrid} title="Overview" description="Totals from GET /purchases/returns/summary with current filters." />
+          <InventorySectionHeader icon={LayoutGrid} title="Overview" description="Totals respect branch / supplier / date filters (GET /purchases/returns/summary)." />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard title="Total Returns" value={stats.total} icon={RotateCcw} />
-            <StatCard title="Today's Returns" value={stats.todayReturns} icon={CalendarDays} />
-            <StatCard title="Total Amount" value={formatPrice(stats.totalAmount)} icon={DollarSign} />
+            <StatCard title="Total returns" value={stats.total} icon={RotateCcw} />
+            <StatCard title="Today's returns" value={stats.todayReturns} icon={CalendarDays} />
+            <StatCard title="Total amount" value={formatPrice(stats.totalAmount)} icon={DollarSign} />
           </div>
         </section>
 
         <section className={INVENTORY_CARD_SHELL}>
           <div className="flex flex-col gap-4 border-b border-border/50 bg-muted/15 px-5 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6 sm:py-5">
-            <InventorySectionHeader compact icon={Layers} title="Return log" description={`Paginated (${PAGE_SIZE} per page). Search matches purchase ref, supplier, or reason.`} />
+            <InventorySectionHeader compact icon={Layers} title="Return log" description={`Paginated (${PAGE_SIZE} per page).`} />
           </div>
           <div className="space-y-4 p-5 sm:p-6 md:p-7">
-            <FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search returns...">
+            <FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search purchase ref, supplier, reason…">
+              <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className={filterFieldClass}>
+                <option value="">All branches</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+              <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)} className={filterFieldClass}>
+                <option value="">All suppliers</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
               <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={filterFieldClass} />
               <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={filterFieldClass} />
             </FilterBar>
 
-            <DataTable columns={columns} data={returns} loading={loading} inventoryStyle />
+            <div className="block lg:hidden space-y-3">
+              {loading ? (
+                <p className="text-sm text-muted-foreground">Loading…</p>
+              ) : returns.length === 0 ? (
+                <div className="rounded-xl border border-border/60 bg-muted/10 p-8 text-center text-sm text-muted-foreground">
+                  <Package className="mx-auto mb-2 size-10 opacity-40" />
+                  No purchase returns found.
+                </div>
+              ) : (
+                returns.map((ret) => (
+                  <div
+                    key={ret.id}
+                    className="rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <User className="size-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold">{ret.purchase?.referenceNo || ret.purchaseRef || "—"}</p>
+                        <p className="text-xs text-muted-foreground">{ret.purchase?.supplier?.name ?? "—"}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {ret.purchase?.branch?.name ?? "—"} · {formatDate(ret.createdAt)}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-sm font-semibold text-primary">{formatPrice(Number(ret.totalAmount))}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-border/50 pt-3">
+                      {ret.purchase?.id ? (
+                        <Button size="sm" variant="outline" asChild>
+                          <Link href={`/purchases/${ret.purchase.id}`}>Purchase</Link>
+                        </Button>
+                      ) : null}
+                      <Button size="sm" asChild>
+                        <Link href={`/purchases/return/${ret.id}`}>View return</Link>
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="hidden lg:block">
+              <DataTable columns={columns} data={returns} loading={loading} inventoryStyle />
+            </div>
             <InventoryTablePagination page={meta.page} lastPage={meta.lastPage} total={meta.total} loading={loading} onPageChange={setPage} />
           </div>
         </section>
       </div>
-
-      <Modal open={addModal} onOpenChange={setAddModal} title="Create Purchase Return" className="max-w-xl">
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Search Purchase Reference</label>
-            <div className="flex gap-2">
-              <Input
-                placeholder="Enter reference number..."
-                value={refSearch}
-                onChange={(e) => setRefSearch(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && searchPurchase()}
-              />
-              <Button type="button" onClick={searchPurchase} disabled={searchingRef}>
-                <Search size={16} />
-              </Button>
-            </div>
-          </div>
-
-          {purchaseForReturn && (
-            <>
-              <div className="rounded-lg bg-muted/50 p-3 text-sm">
-                <p><strong>Reference:</strong> {purchaseForReturn.referenceNo}</p>
-                <p><strong>Supplier:</strong> {purchaseForReturn.supplier?.name || "—"}</p>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Select items and quantity to return</label>
-                <div className="divide-y divide-border rounded-lg border border-border">
-                  {returnItems.map((item) => (
-                    <div key={item.purchaseItemId} className="flex items-center justify-between px-3 py-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">Max: {item.maxQty} · {formatPrice(item.unitCost)} each</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          value={item.quantity || ""}
-                          onChange={(e) => updateReturnQty(item.purchaseItemId, Number(e.target.value))}
-                          className="h-8 w-20 text-center text-sm"
-                          min={0}
-                          max={item.maxQty}
-                          placeholder="0"
-                        />
-                        <span className="w-20 text-right text-sm font-medium">{formatPrice(item.quantity * item.unitCost)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {returnTotal > 0 && (
-                  <div className="mt-2 flex justify-between text-sm font-semibold">
-                    <span>Return Total</span>
-                    <span className="text-primary">{formatPrice(returnTotal)}</span>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Reason <span className="text-red-500">*</span></label>
-                <textarea
-                  className="flex min-h-[80px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  value={returnReason}
-                  onChange={(e) => setReturnReason(e.target.value)}
-                  placeholder="Why is this being returned?"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setAddModal(false)}>Cancel</Button>
-                <Button onClick={handleSubmitReturn} disabled={saving || returnItems.every((i) => i.quantity === 0)}>
-                  {saving ? "Submitting..." : "Submit Return"}
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      </Modal>
-
-      <Modal open={viewModal} onOpenChange={setViewModal} title="Return Details" className="max-w-md">
-        {selectedReturn && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><p className="text-muted-foreground">Purchase Ref</p><p className="font-medium">{selectedReturn.purchase?.referenceNo || selectedReturn.purchaseRef || "—"}</p></div>
-              <div><p className="text-muted-foreground">Supplier</p><p className="font-medium">{selectedReturn.purchase?.supplier?.name || "—"}</p></div>
-              <div><p className="text-muted-foreground">Date</p><p className="font-medium">{formatDate(selectedReturn.createdAt)}</p></div>
-              <div><p className="text-muted-foreground">Total</p><p className="font-medium text-primary">{formatPrice(Number(selectedReturn.totalAmount))}</p></div>
-            </div>
-
-            <div><p className="text-sm text-muted-foreground">Reason</p><p className="mt-1 text-sm">{selectedReturn.reason || "—"}</p></div>
-
-            {selectedReturn.items && selectedReturn.items.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-sm font-semibold">Returned Items</h4>
-                <div className="divide-y divide-border rounded-lg border border-border">
-                  {selectedReturn.items.map((item) => (
-                    <div key={item.id} className="flex justify-between px-3 py-2 text-sm">
-                      <span>{item.storeProduct?.product?.name || "Product"} x{item.quantity}</span>
-                      <span className="font-medium">{formatPrice(item.unitCost * item.quantity)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }

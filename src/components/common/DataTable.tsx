@@ -13,6 +13,16 @@ function isActionsColumn<T>(col: Column<T>) {
   return col.key === "actions";
 }
 
+function rowReactKey(
+  item: Record<string, any> | null | undefined,
+  idx: number
+): string | number {
+  if (!item) return idx;
+  const raw = item["id"];
+  if (typeof raw !== "undefined" && String(raw) !== "") return String(raw);
+  return idx;
+}
+
 interface DataTableProps<T> {
   columns: Column<T>[];
   data: T[];
@@ -112,8 +122,7 @@ export function DataTable<T extends Record<string, any>>({
               </tr>
             ) : (
               data.map((item, idx) => (
-                <tr
-                  key={idx}
+                <tr key={rowReactKey(item, idx)}
                   className={cn(
                     "group/row transition-colors",
                     inventoryStyle &&

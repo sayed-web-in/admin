@@ -99,10 +99,15 @@ body {
 }
 
 /* Premium blur effect when modal is open */
-.main-shell,
-.sidebar-shell {
+.main-shell {
   transition: filter 0.22s cubic-bezier(0.4, 0, 0.2, 1),
               transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: filter;
+}
+
+/* Filter-only here so drawer width/transform animations stay smooth (no competing transform transition). */
+.sidebar-shell {
+  transition: filter 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: filter;
 }
 

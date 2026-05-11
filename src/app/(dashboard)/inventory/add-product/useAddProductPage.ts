@@ -38,6 +38,30 @@ function parseVariantId(id?: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/**
+ * Prevent deleting a variant that still has branch store rows (same guard pattern as seller admin).
+ */
+function computeVariantDeleteBlockReason(
+  v: VariantEntry,
+  rows: StoreProductRow[]
+): string | null {
+  const vid = parseVariantId(v.id);
+  const linked = rows.filter((r) => {
+    if (vid != null) return r.variantId === vid;
+    if (!v.sku?.trim() || r.variantId == null) return false;
+    return r.sku.trim().toLowerCase() === v.sku.trim().toLowerCase();
+  });
+  if (linked.length === 0) return null;
+  const branches = [...new Set(linked.map((r) => r.branch.name))];
+  const hasQty = linked.some((r) => r.quantity > 0);
+  const hasSerials = linked.some((r) => r.serialNumbers.length > 0);
+  const hints: string[] = [];
+  if (hasQty) hints.push("non-zero stock");
+  if (hasSerials) hints.push("serial/IMEI records");
+  const hintStr = hints.length ? ` — ${hints.join(", ")}` : "";
+  return `This variant is linked to store listing(s) in: ${branches.join(", ")}${hintStr}. Remove those branch listings first, then you can delete the variant.`;
+}
+
 /** Stable key from chosen attribute values — used to merge POST/PATCH variants when client id is still a temp UUID. */
 function clientVariantValueIdKey(v: VariantEntry): string {
   const ids = v.attributes.map((a) => a.valueId).filter((x) => x > 0);
@@ -705,11 +729,29 @@ export function useAddProductPage() {
   }, []);
 
   const removeVariant = useCallback((id: string) => {
-    setForm((f) => ({
-      ...f,
-      variants: f.variants.filter((x) => x.id !== id),
-    }));
-  }, []);
+    let blockedReason: string | null = null;
+    let didRemove = false;
+    setForm((f) => {
+      const target = f.variants.find((x) => x.id === id);
+      if (!target) return f;
+      blockedReason = computeVariantDeleteBlockReason(target, storeRows);
+      if (blockedReason) return f;
+      didRemove = true;
+      return { ...f, variants: f.variants.filter((x) => x.id !== id) };
+    });
+    queueMicrotask(() => {
+      if (blockedReason) {
+        toast.error(blockedReason, { id: `variant-delete-blocked-${id}` });
+      } else if (didRemove) {
+        toast.success("Variant removed", { id: "variant-removed" });
+      }
+    });
+  }, [storeRows]);
+
+  const getVariantDeleteBlockReason = useCallback(
+    (v: VariantEntry) => computeVariantDeleteBlockReason(v, storeRows),
+    [storeRows]
+  );
 
   const setField = useCallback(
     <K extends keyof ProductFormState>(key: K, value: ProductFormState[K]) => {
@@ -745,6 +787,7 @@ export function useAddProductPage() {
     refreshStoreRows,
     addVariant,
     removeVariant,
+    getVariantDeleteBlockReason,
     storeModalOpen,
     setStoreModalOpen,
     editStoreOpen,

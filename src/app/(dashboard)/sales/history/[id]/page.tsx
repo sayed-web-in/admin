@@ -332,6 +332,14 @@ export default function SaleHistoryDetailsPage() {
           <FileText className="h-4 w-4 shrink-0" />
           Invoice
         </Button>
+        {sale.status !== "RETURNED" ? (
+          <Button type="button" variant="outline" size="sm" className="h-10 w-full gap-2 rounded-xl sm:h-9 sm:w-auto" asChild>
+            <Link href={`/sales/return/create?saleId=${sale.id}`}>
+              <RotateCcw className="h-4 w-4 shrink-0" />
+              Sales return
+            </Link>
+          </Button>
+        ) : null}
       </InventoryListPageHeader>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 sm:gap-6">
@@ -469,6 +477,16 @@ export default function SaleHistoryDetailsPage() {
                 { key: "items", label: "Items", className: "text-center" },
                 { key: "reason", label: "Reason" },
                 { key: "amount", label: "Amount", render: (r: (typeof returnRows)[number]) => <span className="font-medium text-red-600">{formatPrice(r.amount)}</span> },
+                {
+                  key: "view",
+                  label: "",
+                  className: "w-24 text-right",
+                  render: (r: (typeof returnRows)[number]) => (
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href={`/sales/return/${r.id}`}>View</Link>
+                    </Button>
+                  ),
+                },
               ]}
               data={returnRows}
               loading={false}

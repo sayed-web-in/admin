@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -146,6 +147,7 @@ function AddProductPageContent() {
     saveProductInfo,
     addVariant,
     removeVariant,
+    getVariantDeleteBlockReason,
     storeModalOpen,
     setStoreModalOpen,
     editStoreOpen,
@@ -824,7 +826,10 @@ function AddProductPageContent() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
-                          {form.variants.map((v, i) => (
+                          {form.variants.map((v, i) => {
+                            const variantDeleteBlock =
+                              getVariantDeleteBlockReason(v);
+                            return (
                             <tr
                               key={v.id || i}
                               className="transition-colors hover:bg-muted/25"
@@ -891,8 +896,15 @@ function AddProductPageContent() {
                                     type="button"
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                    title="Remove variant"
+                                    className={cn(
+                                      "h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10 hover:text-destructive",
+                                      variantDeleteBlock && "opacity-40"
+                                    )}
+                                    disabled={Boolean(variantDeleteBlock)}
+                                    title={
+                                      variantDeleteBlock ||
+                                      "Remove variant"
+                                    }
                                     onClick={() => {
                                       if (v.id) removeVariant(v.id);
                                     }}
@@ -902,7 +914,8 @@ function AddProductPageContent() {
                                 </div>
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

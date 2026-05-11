@@ -85,6 +85,12 @@ const ROWS: { label: string; key: DataKeys; type: RowType; tip?: string }[] = [
   },
   { label: "Service Income", key: "serviceIncome", type: "sub", tip: "Income category name contains “service”" },
   { label: "Others Income", key: "othersIncome", type: "sub" },
+  {
+    label: "Return gain (damage retention)",
+    key: "returnGain",
+    type: "sub",
+    tip: "Portion of sales returns not refunded to the customer (seller-admin P&L line)",
+  },
   { label: "Total Income", key: "totalIncome", type: "highlight" },
   { label: "Gross Profit", key: "grossProfit", type: "highlight" },
   { label: "EXPENSES", key: "totalExpense", type: "section", tip: "Costs" },

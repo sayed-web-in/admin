@@ -54,7 +54,7 @@ export function DashboardShell({
       />
       <div
         className={cn(
-          "main-shell min-h-screen flex flex-col transition-[margin] duration-200 ease-out",
+          "main-shell min-h-screen flex flex-col transition-[margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:duration-0",
           "lg:ml-64",
           hydrated && collapsed && "lg:ml-[4.5rem]"
         )}

@@ -10,6 +10,7 @@ import {
   Eye,
   Plus,
   RotateCcw,
+  Undo2,
   LayoutGrid,
   Layers,
 } from "lucide-react";
@@ -32,7 +33,6 @@ import {
   TableRowActionButton,
   tableActionIconClassName,
 } from "@/components/common/TableRowActions";
-import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -40,22 +40,12 @@ const PAGE_SIZE = 20;
 const filterFieldClass =
   "h-10 rounded-xl border border-input bg-background/80 px-3 text-sm shadow-sm backdrop-blur-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-interface PurchaseItem {
-  id: number;
-  quantity: number;
-  unitCost: number;
-  storeProduct?: {
-    product?: { name: string };
-    productVariant?: { attributes?: { attributeValue?: { value: string } | null }[] } | null;
-  };
-}
-
 interface Purchase {
   id: number;
   referenceNo: string;
   supplier?: { id: number; name: string; phone?: string; email?: string };
   branch?: { id: number; name: string };
-  items?: PurchaseItem[];
+  items?: { id: number }[];
   _count?: { items: number };
   totalAmount: number;
   discount: number;
@@ -91,8 +81,6 @@ export default function PurchasesPage() {
   const [supplierFilter, setSupplierFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [viewModal, setViewModal] = useState(false);
-  const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ page: 1, lastPage: 1, total: 0 });
   const [stats, setStats] = useState({
@@ -185,22 +173,6 @@ export default function PurchasesPage() {
     void Promise.all([fetchPurchases(), loadSummary()]);
   };
 
-  const openView = async (purchase: Purchase) => {
-    try {
-      const full = await apiFetch<Purchase>(`/purchases/${purchase.id}`);
-      setSelectedPurchase(full);
-    } catch {
-      setSelectedPurchase(purchase);
-    }
-    setViewModal(true);
-  };
-
-  const variantLabel = (item: PurchaseItem) =>
-    item.storeProduct?.productVariant?.attributes
-      ?.map((a) => a.attributeValue?.value)
-      .filter(Boolean)
-      .join(" / ");
-
   const itemCountCell = (item: Purchase) => item._count?.items ?? item.items?.length ?? "—";
 
   const columns = [
@@ -260,7 +232,15 @@ export default function PurchasesPage() {
       label: "Actions",
       render: (item: Purchase) => (
         <TableRowActions>
-          <TableRowActionButton title="View" onClick={() => openView(item)}>
+          {item.status !== "RETURNED" ? (
+            <TableRowActionButton
+              title="Create return (seller-style)"
+              onClick={() => router.push(`/purchases/return/create?purchaseId=${item.id}`)}
+            >
+              <Undo2 className={tableActionIconClassName} />
+            </TableRowActionButton>
+          ) : null}
+          <TableRowActionButton title="View" onClick={() => router.push(`/purchases/${item.id}`)}>
             <Eye className={tableActionIconClassName} />
           </TableRowActionButton>
         </TableRowActions>
@@ -334,76 +314,6 @@ export default function PurchasesPage() {
         </section>
       </div>
 
-      <Modal open={viewModal} onOpenChange={setViewModal} title="Purchase Details" className="max-w-2xl">
-        {selectedPurchase && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-              <div><p className="text-muted-foreground">Reference</p><p className="font-medium">{selectedPurchase.referenceNo}</p></div>
-              <div><p className="text-muted-foreground">Supplier</p><p className="font-medium">{selectedPurchase.supplier?.name || "—"}</p></div>
-              <div><p className="text-muted-foreground">Branch</p><p className="font-medium">{selectedPurchase.branch?.name || "—"}</p></div>
-              <div><p className="text-muted-foreground">Date</p><p className="font-medium">{formatDate(selectedPurchase.createdAt)}</p></div>
-              <div><p className="text-muted-foreground">Payment Method</p><p className="font-medium capitalize">{selectedPurchase.paymentMethod?.replace("_", " ") || "—"}</p></div>
-              <div><p className="text-muted-foreground">Status</p><StatusBadge status={selectedPurchase.status} /></div>
-            </div>
-
-            {selectedPurchase.supplier && (
-              <div className="rounded-lg bg-muted/50 p-3 text-sm">
-                <p className="mb-1 font-semibold">Supplier Info</p>
-                <p>Name: {selectedPurchase.supplier.name}</p>
-                {selectedPurchase.supplier.phone && <p>Phone: {selectedPurchase.supplier.phone}</p>}
-                {selectedPurchase.supplier.email && <p>Email: {selectedPurchase.supplier.email}</p>}
-              </div>
-            )}
-
-            {selectedPurchase.items && selectedPurchase.items.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-sm font-semibold">Items</h4>
-                <div className="overflow-hidden rounded-lg border border-border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-muted/50">
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Product</th>
-                        <th className="px-3 py-2 text-center text-xs font-semibold text-muted-foreground">Qty</th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Unit Cost</th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {selectedPurchase.items.map((item) => (
-                        <tr key={item.id}>
-                          <td className="px-3 py-2">
-                            <p>{item.storeProduct?.product?.name || "Product"}</p>
-                            {variantLabel(item) ? <p className="text-xs text-muted-foreground">{variantLabel(item)}</p> : null}
-                          </td>
-                          <td className="px-3 py-2 text-center">{item.quantity}</td>
-                          <td className="px-3 py-2 text-right">{formatPrice(item.unitCost)}</td>
-                          <td className="px-3 py-2 text-right font-medium">{formatPrice(item.unitCost * item.quantity)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-1 rounded-lg bg-muted/50 p-3 text-sm">
-              <div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(Number(selectedPurchase.totalAmount))}</span></div>
-              {Number(selectedPurchase.discount) > 0 && <div className="flex justify-between text-red-600"><span>Discount</span><span>-{formatPrice(Number(selectedPurchase.discount))}</span></div>}
-              {Number(selectedPurchase.tax) > 0 && <div className="flex justify-between"><span>Tax</span><span>+{formatPrice(Number(selectedPurchase.tax))}</span></div>}
-              <div className="mt-1 flex justify-between border-t border-border pt-1 font-bold"><span>Grand Total</span><span className="text-primary">{formatPrice(Number(selectedPurchase.grandTotal))}</span></div>
-              <div className="flex justify-between"><span>Paid</span><span className="text-green-600">{formatPrice(Number(selectedPurchase.paidAmount || 0))}</span></div>
-              {Number(selectedPurchase.dueAmount) > 0 && <div className="flex justify-between font-medium text-red-600"><span>Due</span><span>{formatPrice(Number(selectedPurchase.dueAmount))}</span></div>}
-            </div>
-
-            {selectedPurchase.note && (
-              <div>
-                <p className="text-sm text-muted-foreground">Note</p>
-                <p className="mt-1 text-sm">{selectedPurchase.note}</p>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }

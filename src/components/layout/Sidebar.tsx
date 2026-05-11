@@ -17,7 +17,6 @@ import {
   BarChart3,
   Trash2,
   Settings,
-  ChevronDown,
   ChevronRight,
   Plus,
   List,
@@ -256,6 +255,47 @@ function subtreeActive(pathname: string, item: MenuItem): boolean {
   return item.children?.some((c) => subtreeActive(pathname, c)) ?? false;
 }
 
+/** Parent row: a descendant route is active (not the row’s own link). */
+const navSectionActive =
+  "border-l-[3px] border-violet-500 bg-gradient-to-r from-violet-500/12 via-violet-500/5 to-transparent font-semibold text-foreground shadow-sm dark:border-violet-400 dark:from-violet-400/18 dark:via-violet-400/8 dark:to-transparent";
+
+/** Top-level leaf link (depth 0) — current page. */
+const navLeafActiveRoot =
+  "border-l-[3px] border-sky-600 bg-gradient-to-r from-sky-500/14 via-sky-500/6 to-transparent font-semibold text-sky-950 shadow-sm dark:border-sky-400 dark:from-sky-400/22 dark:via-sky-400/10 dark:to-transparent dark:text-sky-50";
+
+/** Nested submenu leaf — distinct from root. */
+const navLeafActiveNested =
+  "border-l-[3px] border-emerald-600 bg-gradient-to-r from-emerald-500/14 via-emerald-500/6 to-transparent font-semibold text-emerald-950 shadow-sm dark:border-emerald-400 dark:from-emerald-400/22 dark:via-emerald-400/10 dark:to-transparent dark:text-emerald-50";
+
+function leafActiveClass(depth: number) {
+  return depth === 0 ? navLeafActiveRoot : navLeafActiveNested;
+}
+
+/**
+ * Submenu open/close: pure CSS max-height + opacity (interpolates in all engines; avoids head <script> / height:auto races).
+ * Large cap covers deep nested menus; clip is overflow-hidden.
+ */
+function CollapsibleSubmenu({
+  expanded,
+  children,
+}: {
+  expanded: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "overflow-hidden transition-[max-height,opacity] duration-400 ease-in-out motion-reduce:transition-none motion-reduce:duration-0",
+        expanded
+          ? "max-h-[min(3600px,94dvh)] opacity-100"
+          : "pointer-events-none max-h-0 opacity-0"
+      )}
+    >
+      <div className="min-h-0">{children}</div>
+    </div>
+  );
+}
+
 function FlyoutLinks({
   item,
   pathname,
@@ -279,10 +319,10 @@ function FlyoutLinks({
         href={item.href}
         onClick={onPick}
         className={cn(
-          "flex items-center gap-2 rounded-lg py-2 text-sm transition-colors",
+          "flex items-center gap-2 rounded-lg py-2 text-sm transition-[background-color,box-shadow,color] duration-200",
           active
-            ? "bg-primary/10 font-medium text-primary"
-            : "text-foreground hover:bg-muted"
+            ? leafActiveClass(depth ?? 0)
+            : "text-foreground hover:bg-muted/90"
         )}
         style={{ paddingLeft: pad, paddingRight: 12 }}
       >
@@ -364,7 +404,7 @@ function CollapsedFlyout({
         onClick={onClose}
       />
       <div
-        className="fixed z-[100] max-h-[min(72vh,440px)] w-[min(17rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border border-border bg-card py-2 shadow-2xl ring-1 ring-black/5"
+        className="fixed z-[100] max-h-[min(72vh,440px)] w-[min(17rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-xl border border-border bg-card py-2 shadow-2xl ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95 duration-200"
         style={{ top: pos.top, left: pos.left }}
         role="menu"
       >
@@ -409,10 +449,17 @@ function SidebarItem({
 }) {
   const d = depth ?? 0;
   const [open, setOpen] = useState(false);
+  /** When route is under this branch, `childActive` stays true — without this, the panel can never "close" while that route is open. */
+  const [userClosedBranch, setUserClosedBranch] = useState(false);
   const hasChildren = Boolean(item.children?.length);
   const isActive = pathActive(pathname, item.href);
   const childActive = hasChildren && subtreeActive(pathname, item);
-  const expanded = open || childActive;
+
+  useEffect(() => {
+    if (!childActive) setUserClosedBranch(false);
+  }, [childActive]);
+
+  const expanded = (open || childActive) && !userClosedBranch;
   const Icon = item.icon;
 
   const closeFlyout = useCallback(() => setFlyout(null), [setFlyout]);
@@ -437,9 +484,9 @@ function SidebarItem({
             else setFlyout({ key: item.label, anchor: e.currentTarget });
           }}
           className={cn(
-            "relative flex w-full items-center justify-center rounded-xl p-2.5 transition-colors",
+            "relative flex w-full items-center justify-center rounded-xl p-2.5 transition-[background-color,box-shadow,color] duration-200",
             childActive
-              ? "bg-primary/12 text-primary shadow-sm ring-1 ring-primary/20"
+              ? "bg-violet-500/15 text-violet-700 shadow-md ring-2 ring-violet-500/25 dark:bg-violet-400/20 dark:text-violet-200 dark:ring-violet-400/35"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           )}
         >
@@ -466,26 +513,36 @@ function SidebarItem({
       <div>
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          aria-expanded={expanded}
+          onClick={() => {
+            if (expanded) {
+              setOpen(false);
+              if (childActive) setUserClosedBranch(true);
+            } else {
+              setUserClosedBranch(false);
+              setOpen(true);
+            }
+          }}
           className={cn(
-            "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors",
-            childActive
-              ? "bg-primary/10 font-medium text-primary"
-              : "text-foreground hover:bg-muted/80"
+            "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-[background-color,box-shadow,color] duration-200",
+            childActive ? navSectionActive : "text-foreground hover:bg-muted/80"
           )}
           style={{ paddingLeft: 12 + d * 12 }}
         >
-          <Icon className="size-[1.125rem] shrink-0" strokeWidth={1.75} />
+          <Icon className="size-[1.125rem] shrink-0 transition-transform duration-200 ease-out" strokeWidth={1.75} />
           <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
           {showEcommercePending && <EcommercePendingBadge />}
-          {expanded ? (
-            <ChevronDown className="size-4 shrink-0 opacity-70" />
-          ) : (
-            <ChevronRight className="size-4 shrink-0 opacity-70" />
-          )}
+          <ChevronRight
+            className={cn(
+              "size-4 shrink-0 opacity-70 transition-[transform,color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:duration-0",
+              expanded && "rotate-90",
+              childActive && "text-violet-600 opacity-100 dark:text-violet-300"
+            )}
+            aria-hidden
+          />
         </button>
-        {expanded && (
-          <div className="mt-0.5 space-y-0.5 border-l border-border/60 ml-3 pl-1">
+        <CollapsibleSubmenu expanded={expanded}>
+          <div className="mt-0.5 space-y-0.5 border-l-2 border-violet-500/20 ml-3 pl-2 pb-0.5 dark:border-violet-400/25">
             {item.children!.map((child) => (
               <SidebarItem
                 key={child.label}
@@ -500,7 +557,7 @@ function SidebarItem({
               />
             ))}
           </div>
-        )}
+        </CollapsibleSubmenu>
       </div>
     );
   }
@@ -531,9 +588,11 @@ function SidebarItem({
           title={item.label}
           onClick={onMobileNav}
           className={cn(
-            "relative flex items-center justify-center rounded-xl p-2.5 transition-colors",
+            "relative flex items-center justify-center rounded-xl p-2.5 transition-[background-color,box-shadow,color] duration-200",
             isActive
-              ? "bg-primary/12 text-primary shadow-sm ring-1 ring-primary/20"
+              ? d === 0
+                ? "bg-sky-500/18 text-sky-800 shadow-md ring-2 ring-sky-500/30 dark:bg-sky-400/25 dark:text-sky-100 dark:ring-sky-400/40"
+                : "bg-emerald-500/18 text-emerald-800 shadow-md ring-2 ring-emerald-500/30 dark:bg-emerald-400/25 dark:text-emerald-100 dark:ring-emerald-400/40"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
           )}
         >
@@ -565,10 +624,8 @@ function SidebarItem({
         href={item.href}
         onClick={onMobileNav}
         className={cn(
-          "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors",
-          isActive
-            ? "bg-primary/10 font-medium text-primary"
-            : "text-foreground hover:bg-muted/80"
+          "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-[background-color,box-shadow,color] duration-200",
+          isActive ? leafActiveClass(d) : "text-foreground hover:bg-muted/80"
         )}
         style={{ paddingLeft: 12 + d * 12 }}
       >
@@ -656,22 +713,29 @@ export function Sidebar({
 
   return (
     <>
-      {mobileOpen && (
-        <button
-          type="button"
-          className="fixed bottom-0 left-0 right-0 top-16 z-[50] bg-black/45 backdrop-blur-[2px] transition-opacity duration-300 ease-out lg:hidden"
-          aria-label="Close sidebar"
-          onClick={closeMobile}
-        />
-      )}
+      <button
+        type="button"
+        className={cn(
+          "fixed bottom-0 left-0 right-0 top-16 z-[50] bg-black/50 backdrop-blur-[3px] transition-[opacity,backdrop-filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:duration-150 lg:hidden",
+          mobileOpen
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
+        )}
+        aria-label="Close sidebar"
+        aria-hidden={!mobileOpen}
+        tabIndex={-1}
+        onClick={closeMobile}
+      />
 
       <aside
         className={cn(
           "sidebar-shell fixed left-0 z-[55] flex w-[min(18rem,calc(100vw-2.5rem))] flex-col border-r border-border bg-card",
           "shadow-[2px_0_4px_-2px_rgba(0,0,0,0.04),6px_0_14px_-6px_rgba(0,0,0,0.05)]",
           "dark:shadow-[2px_0_6px_-2px_rgba(0,0,0,0.2),8px_0_18px_-6px_rgba(0,0,0,0.28)]",
-          "top-16 h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] transition-[transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform",
-          "lg:top-0 lg:z-50 lg:h-dvh lg:max-h-screen lg:will-change-auto lg:transition-[transform,width] lg:duration-200 lg:ease-out",
+          "top-16 h-[calc(100dvh-4rem)] max-h-[calc(100dvh-4rem)] pb-[env(safe-area-inset-bottom,0px)]",
+          "transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform",
+          "motion-reduce:transition-none motion-reduce:duration-0 motion-reduce:will-change-auto",
+          "lg:top-0 lg:z-50 lg:h-dvh lg:max-h-screen lg:pb-0 lg:will-change-[width,transform] lg:transition-[transform,width,box-shadow] lg:duration-300 lg:ease-[cubic-bezier(0.22,1,0.36,1)]",
           collapsedDesktop ? "lg:w-[4.5rem]" : "lg:w-64",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
@@ -696,7 +760,7 @@ export function Sidebar({
                 <button
                   type="button"
                   onClick={onToggleCollapse}
-                  className="hidden rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:flex"
+                  className="hidden rounded-lg p-2 text-muted-foreground transition-[color,transform,background-color] duration-200 ease-out hover:bg-muted hover:text-foreground active:scale-95 motion-reduce:active:scale-100 lg:flex"
                   title="Collapse sidebar"
                   aria-label="Collapse sidebar"
                 >
@@ -705,7 +769,7 @@ export function Sidebar({
                 <button
                   type="button"
                   onClick={closeMobile}
-                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+                  className="rounded-lg p-2 text-muted-foreground transition-[color,transform,background-color] duration-200 ease-out hover:bg-muted hover:text-foreground active:scale-95 motion-reduce:active:scale-100 lg:hidden"
                   aria-label="Close menu"
                 >
                   <X className="size-5" />
@@ -717,7 +781,7 @@ export function Sidebar({
               <button
                 type="button"
                 onClick={onToggleCollapse}
-                className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="rounded-lg p-2 text-muted-foreground transition-[color,transform,background-color] duration-200 ease-out hover:bg-muted hover:text-foreground active:scale-95 motion-reduce:active:scale-100"
                 title="Expand sidebar"
                 aria-label="Expand sidebar"
               >
@@ -729,7 +793,7 @@ export function Sidebar({
 
         <nav
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 scroll-smooth",
+            "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-2 py-3 scroll-smooth [-webkit-overflow-scrolling:touch]",
             collapsedDesktop ? "space-y-1.5 px-1.5" : "space-y-0.5"
           )}
         >
