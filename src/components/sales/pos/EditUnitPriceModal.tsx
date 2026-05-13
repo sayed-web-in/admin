@@ -45,7 +45,7 @@ export function EditUnitPriceModal({
             inputMode="decimal"
             value={priceInput}
             onChange={(e) => onPriceInputChange(e.target.value.replace(/[^0-9.,]/g, ""))}
-            className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-ring"
             autoFocus
           />
           {(() => {

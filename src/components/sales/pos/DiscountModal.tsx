@@ -28,7 +28,7 @@ export function DiscountModal({
           value={value}
           onChange={(e) => onValueChange(e.target.value)}
           placeholder="Amount"
-          className="w-full text-sm py-2.5 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full text-sm py-2.5 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-ring"
           autoFocus
         />
         <div className="flex justify-end gap-2">

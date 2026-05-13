@@ -99,8 +99,8 @@ function CartItemCard({
   return (
     <div className="p-3 rounded-lg border border-slate-200 bg-white">
       <div className="flex items-start gap-2">
-        <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
-          <span className="text-[10px] font-semibold text-indigo-600">{serialNo}</span>
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10">
+          <span className="text-[10px] font-semibold text-primary">{serialNo}</span>
         </div>
 
         <div className="flex-1 min-w-0">
@@ -114,7 +114,7 @@ function CartItemCard({
               <button
                 type="button"
                 onClick={() => onEditPrice(item)}
-                className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
                 title="Edit unit price"
               >
                 <Pencil className="w-3.5 h-3.5" />
@@ -154,7 +154,7 @@ function CartItemCard({
               <div key={group.batchNumber} className="rounded-md border border-slate-200 bg-slate-50 p-2">
                 <div className="flex items-center justify-between text-[11px]">
                   <div className="flex flex-col">
-                    <span className="font-semibold text-indigo-600">Batch: {group.batchNumber}</span>
+                    <span className="font-semibold text-primary">Batch: {group.batchNumber}</span>
                     <span className="font-medium text-slate-700">Qty: {group.quantity}</span>
                   </div>
                   {group.serialNumbers.length === 0 && (
@@ -181,7 +181,7 @@ function CartItemCard({
                     {group.serialNumbers.map((serial) => (
                       <span
                         key={serial}
-                        className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-mono"
+                        className="rounded border border-primary/20 bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary"
                       >
                         {serial}
                       </span>

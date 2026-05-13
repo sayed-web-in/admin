@@ -204,7 +204,7 @@ export function CustomerPopover({
       {/* header */}
       <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200">
         <h3 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-          <User className="w-4 h-4 text-indigo-600" />
+          <User className="w-4 h-4 text-primary" />
           Order Details
         </h3>
         {customer && (
@@ -240,12 +240,7 @@ export function CustomerPopover({
         <button
           type="button"
           onClick={() => { setAddModalPhone(""); setAddModalOpen(true); }}
-          className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0 text-white"
-          style={{
-            background:
-              "linear-gradient(135deg, rgba(99,102,241,0.9), rgba(139,92,246,0.9))",
-            border: "1px solid rgba(99,102,241,0.3)",
-          }}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           title="Add new customer"
         >
           <Plus className="w-5 h-5" />
@@ -265,8 +260,8 @@ export function CustomerPopover({
       {/* selected customer info */}
       {customer && (
         <div className="mt-3 p-3 rounded-lg border border-slate-100 bg-slate-50 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
-            <User className="w-4 h-4 text-indigo-600" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
+            <User className="h-4 w-4 text-primary" />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900 truncate">{customer.name}</p>

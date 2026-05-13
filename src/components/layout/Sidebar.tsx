@@ -15,7 +15,7 @@ import {
   Building2,
   ClipboardList,
   BarChart3,
-  Trash2,
+  Archive,
   Settings,
   ChevronRight,
   Plus,
@@ -199,22 +199,8 @@ const menuItems: MenuItem[] = [
       { label: "Sales Report", href: "/reports/sales", icon: BarChart3 },
       { label: "Purchase Report", href: "/reports/purchase", icon: BarChart3 },
       { label: "Stock Report", href: "/reports/stock", icon: BarChart3 },
-      {
-        label: "Supplier Report",
-        icon: BarChart3,
-        children: [
-          { label: "Supplier Report", href: "/reports/supplier", icon: BarChart3 },
-          { label: "Supplier Due", href: "/reports/supplier-due", icon: BarChart3 },
-        ],
-      },
-      {
-        label: "Customer Report",
-        icon: BarChart3,
-        children: [
-          { label: "Customer Report", href: "/reports/customer", icon: BarChart3 },
-          { label: "Customer Due", href: "/reports/customer-due", icon: BarChart3 },
-        ],
-      },
+      { label: "Supplier Report", href: "/reports/supplier", icon: BarChart3 },
+      { label: "Customer Report", href: "/reports/customer", icon: BarChart3 },
       {
         label: "Product Report",
         icon: BarChart3,
@@ -229,7 +215,7 @@ const menuItems: MenuItem[] = [
       { label: "Profit & Loss", href: "/reports/profit-loss", icon: BarChart3 },
     ],
   },
-  { label: "Recycle Bin", href: "/recycle-bin", icon: Trash2 },
+  { label: "Archive", href: "/archive", icon: Archive },
   {
     label: "Settings",
     icon: Settings,

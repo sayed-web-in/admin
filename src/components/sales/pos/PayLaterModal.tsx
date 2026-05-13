@@ -122,7 +122,7 @@ export function PayLaterModal({
           <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">Customer</p>
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-indigo-600" />
+              <User className="h-4 w-4 text-primary" />
               <span className="text-sm font-semibold text-slate-900">
                 {customer?.name ?? "Walk-in Customer"}
               </span>
@@ -188,14 +188,14 @@ export function PayLaterModal({
         )}
 
         {/* Grand Total */}
-        <div className="flex items-center justify-between p-4 rounded-xl border border-indigo-200 bg-indigo-50">
+        <div className="flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 p-4">
           <div>
-            <p className="text-sm font-semibold text-indigo-700">Total Amount</p>
+            <p className="text-sm font-semibold text-foreground">Total Amount</p>
             {subtotal !== grandTotal && (
               <p className="text-xs text-slate-400 line-through">{formatPrice(subtotal)}</p>
             )}
           </div>
-          <span className="text-lg font-bold text-indigo-600">{formatPrice(grandTotal)}</span>
+          <span className="text-lg font-bold text-primary">{formatPrice(grandTotal)}</span>
         </div>
 
         {customer && customerAdvanceBalance > 0 ? (
@@ -261,7 +261,7 @@ export function PayLaterModal({
             onChange={(e) => setNote(e.target.value)}
             placeholder="Add a note for this pay later order..."
             rows={2}
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       </div>

@@ -40,7 +40,7 @@ export function ServiceModal({
               onClick={() => onSelect(s)}
             >
               <span className="font-medium">{s.name}</span>
-              <span className="text-indigo-600 font-semibold">{formatPrice(s.price)}</span>
+              <span className="font-semibold text-primary">{formatPrice(s.price)}</span>
             </button>
           ))
         )}

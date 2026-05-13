@@ -289,7 +289,7 @@ export function CompleteOrderModal({
               <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">Customer</p>
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  <User className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
+                  <User className="h-3.5 w-3.5 shrink-0 text-primary" />
                   <span className="text-sm font-semibold text-slate-900">
                     {customer?.name ?? "Walk-in Customer"}
                   </span>
@@ -307,7 +307,7 @@ export function CompleteOrderModal({
             {cart.length > 0 && (
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                 <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                  Products <span className="ml-1 rounded-full bg-indigo-100 px-1.5 py-0.5 text-indigo-600">{cart.length}</span>
+                  Products <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-primary">{cart.length}</span>
                 </p>
                 <div className="space-y-0 max-h-44 overflow-y-auto">
                   {cart.map((item, idx) => (
@@ -316,7 +316,7 @@ export function CompleteOrderModal({
                       className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-200 last:border-0"
                     >
                       <div className="flex items-start gap-1.5 min-w-0">
-                        <span className="mt-0.5 shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-[9px] font-bold text-indigo-600">
+                        <span className="mt-0.5 shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[9px] font-bold text-primary">
                           {idx + 1}
                         </span>
                         <div className="min-w-0">
@@ -360,7 +360,7 @@ export function CompleteOrderModal({
                 )}
                 <div className="flex justify-between pt-1.5 border-t border-slate-200">
                   <span className="font-bold text-slate-900">Grand Total</span>
-                  <span className="font-bold text-indigo-600">{formatPrice(grandTotal)}</span>
+                  <span className="font-bold text-primary">{formatPrice(grandTotal)}</span>
                 </div>
               </div>
             </div>
@@ -478,7 +478,7 @@ export function CompleteOrderModal({
                           disabled={!row.accountId}
                           onChange={(e) => handleRowChange(row.id, "amount", e.target.value)}
                           placeholder="0"
-                          className="w-full h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-40"
+                          className="w-full h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
                         />
                       </div>
                       {paymentRows.length > 1 && (
@@ -502,7 +502,7 @@ export function CompleteOrderModal({
                     { id: String(Date.now()), accountId: "", amount: "" },
                   ])
                 }
-                className="mt-2.5 flex items-center gap-1.5 text-[11px] font-semibold text-indigo-600 hover:text-indigo-500 transition-colors"
+                className="mt-2.5 flex items-center gap-1.5 text-[11px] font-semibold text-primary transition-colors hover:text-primary/80"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Add account
@@ -524,7 +524,7 @@ export function CompleteOrderModal({
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="Add a note…"
                   rows={2}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 resize-none focus:outline-none focus:ring-1 focus:ring-ring"
                 />
               </div>
             </div>
@@ -533,17 +533,17 @@ export function CompleteOrderModal({
 
         {/* Summary bar */}
         <div className="grid grid-cols-4 gap-2 flex-shrink-0">
-          <div className="flex flex-col rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500">Total</span>
-            <span className="text-sm font-bold tabular-nums text-indigo-700">{formatPrice(grandTotal)}</span>
+          <div className="flex flex-col rounded-xl border border-primary/25 bg-primary/5 px-3 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/80">Total</span>
+            <span className="text-sm font-bold tabular-nums text-primary">{formatPrice(grandTotal)}</span>
           </div>
           <div className="flex flex-col rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Receive</span>
             <span className="text-sm font-bold tabular-nums text-emerald-700">{formatPrice(displayReceive)}</span>
           </div>
-          <div className="flex flex-col rounded-xl border border-sky-300 bg-sky-50 px-3 py-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-600">Change</span>
-            <span className="text-sm font-bold tabular-nums text-sky-700">{formatPrice(change)}</span>
+          <div className="flex flex-col rounded-xl border border-muted-foreground/20 bg-muted/40 px-3 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Change</span>
+            <span className="text-sm font-bold tabular-nums text-foreground">{formatPrice(change)}</span>
           </div>
           <div className="flex flex-col rounded-xl border border-amber-300 bg-amber-50 px-3 py-2">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600">Due</span>

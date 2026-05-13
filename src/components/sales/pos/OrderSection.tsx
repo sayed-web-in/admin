@@ -50,6 +50,8 @@ interface OrderSectionProps {
     advanceApplied?: number;
   }) => Promise<boolean>;
   onEditUnitPrice: (id: number, price: number) => void;
+  /** When POS order panel is shown in a mobile bottom sheet (seller-admin style), close it after pay / complete. */
+  onCloseMobileSheet?: () => void;
 }
 
 export function OrderSection({
@@ -71,6 +73,7 @@ export function OrderSection({
   onPayLater,
   onComplete,
   onEditUnitPrice,
+  onCloseMobileSheet,
 }: OrderSectionProps) {
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [discountInput, setDiscountInput] = useState<string>("");
@@ -150,7 +153,7 @@ export function OrderSection({
             )}
             <div className="pt-2 mt-2 border-t border-slate-200 flex justify-between items-center">
               <span className="font-bold text-slate-900">Grand Total</span>
-              <span className="text-lg font-bold text-indigo-600">{formatPrice(grandTotal)}</span>
+              <span className="text-lg font-bold text-primary">{formatPrice(grandTotal)}</span>
             </div>
           </div>
         </div>
@@ -209,7 +212,7 @@ export function OrderSection({
               type="button"
               onClick={() => setShowCompleteModal(true)}
               disabled={loading || cart.length === 0}
-              className={`flex items-center justify-center gap-2 py-3 min-h-[48px] text-sm sm:text-base font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${customer ? "flex-1" : "w-full"}`}
+              className={`flex min-h-[48px] items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:text-base ${customer ? "flex-1" : "w-full"}`}
             >
               <CheckCircle className="w-5 h-5 shrink-0" />
               <span className="sm:hidden">Complete</span>
@@ -256,7 +259,10 @@ export function OrderSection({
         onOpenChange={setShowCompleteModal}
         onConfirm={async (opts) => {
           const ok = await onComplete(opts);
-          if (ok) setShowCompleteModal(false);
+          if (ok) {
+            setShowCompleteModal(false);
+            onCloseMobileSheet?.();
+          }
         }}
       />
 
@@ -274,6 +280,7 @@ export function OrderSection({
         onConfirm={async (opts) => {
           await onPayLater(opts);
           setShowPayLaterModal(false);
+          onCloseMobileSheet?.();
         }}
       />
 

@@ -7,6 +7,9 @@ const parsedApiUrl = (() => {
 })();
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [{ source: "/recycle-bin", destination: "/archive", permanent: false }];
+  },
   images: {
     remotePatterns: parsedApiUrl
       ? [

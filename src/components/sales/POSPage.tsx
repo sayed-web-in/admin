@@ -1,11 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { Printer } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/common/Modal";
+import { ShoppingCart, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { formatPrice } from "@/lib/utils";
+import { cn, formatPrice, computeSaleGrandTotalLikeBackend, roundMoney2 } from "@/lib/utils";
 import { getSelectedBranch } from "@/lib/auth";
 import { toast } from "sonner";
 import { POSCategorySidebar } from "@/components/sales/pos/CategorySidebar";
@@ -35,8 +33,6 @@ interface PosService {
   price: number;
 }
 
-type MobileTab = "categories" | "products" | "cart";
-
 export function POSPage() {
   const [products, setProducts] = useState<POSProduct[]>([]);
   const [cart, setCart] = useState<PosItem[]>([]);
@@ -45,12 +41,11 @@ export function POSPage() {
   const [customer, setCustomer] = useState<POSCustomer | null>(null);
   const [discount, setDiscount] = useState(0);
   const [appliedServices, setAppliedServices] = useState<PosService[]>([]);
-  const [receiptModal, setReceiptModal] = useState(false);
   const [lastSale, setLastSale] = useState<any>(null);
   const [invoicePreviewOpen, setInvoicePreviewOpen] = useState(false);
   const [invoicePreviewData, setInvoicePreviewData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [mobileTab, setMobileTab] = useState<MobileTab>("products");
+  const [mobileOrderOpen, setMobileOrderOpen] = useState(false);
   const branchId = getSelectedBranch();
 
   const fetchProducts = useCallback(async () => {
@@ -183,7 +178,6 @@ export function POSPage() {
         },
       ];
     });
-    setMobileTab("cart");
     if (isImeiProduct) {
       toast.success(
         normalizedSerials.length > 0
@@ -225,9 +219,14 @@ export function POSPage() {
     );
   };
 
-  const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
   const servicesTotal = appliedServices.reduce((sum, s) => sum + Number(s.price || 0), 0);
-  const grandTotal = subtotal - discount + servicesTotal;
+  const posTax = 0;
+  const { totalAmount: subtotal, grandTotal } = computeSaleGrandTotalLikeBackend(
+    cart.map((i) => ({ unitPrice: i.price, quantity: i.quantity })),
+    discount,
+    posTax,
+    servicesTotal,
+  );
 
   const handleComplete = async (opts: {
     paymentMethod: string;
@@ -319,7 +318,12 @@ export function POSPage() {
               sku: it?.storeProduct?.productVariant?.sku || it?.storeProduct?.product?.sku || "N/A",
               quantity: Number(it?.quantity || 0),
               unitPrice: Number(it?.unitPrice || 0),
-              total: Number(it?.total || Number(it?.unitPrice || 0) * Number(it?.quantity || 0)),
+              total: roundMoney2(
+                Number(
+                  it?.total ??
+                    Number(it?.unitPrice || 0) * Number(it?.quantity || 0),
+                ),
+              ),
               serialNumbers: Array.isArray(it?.serialNumbers)
                 ? it.serialNumbers.map((s: any) => String(s?.serial || s?.serialNumber || s))
                 : [],
@@ -334,7 +338,7 @@ export function POSPage() {
               sku: "",
               quantity: i.quantity,
               unitPrice: i.price,
-              total: i.quantity * i.price,
+              total: roundMoney2(i.quantity * i.price),
               serialNumbers: i.serialNumbers || [],
             })),
         subtotal,
@@ -413,7 +417,6 @@ export function POSPage() {
   const handleDone = () => {
     setInvoicePreviewOpen(false);
     setInvoicePreviewData(null);
-    setReceiptModal(false);
     setCart([]);
     setCustomer(null);
     setDiscount(0);
@@ -422,98 +425,50 @@ export function POSPage() {
   };
 
 
-  return (
-    <div data-page="pos" className="overflow-hidden flex flex-col h-full min-h-0 flex-1 bg-slate-50">
-      <div className="flex lg:hidden border-b border-slate-200 bg-white">
-        {(["categories", "products", "cart"] as MobileTab[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setMobileTab(tab)}
-            className={`flex-1 py-2.5 text-sm font-medium capitalize transition-colors ${
-              mobileTab === tab
-                ? "text-primary border-b-2 border-primary"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab}
-            {tab === "cart" && cart.length > 0 && (
-              <span className="ml-1 bg-primary text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                {cart.length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+  const orderSectionShared = {
+    branchId,
+    customer,
+    cart,
+    subtotal,
+    servicesTotal,
+    grandTotal,
+    discount,
+    loading,
+    appliedServices,
+    onSelectCustomer: (c: POSCustomer) => setCustomer(c),
+    onClearCustomer: () => setCustomer(null),
+    onUpdateQty: updateQty,
+    onSetDiscount: setDiscount,
+    onAddService: (service: PosService) => {
+      setAppliedServices((prev) => {
+        if (prev.some((s) => s.id === service.id)) return prev;
+        return [...prev, service];
+      });
+    },
+    onRemoveService: (serviceId: number) => {
+      setAppliedServices((prev) => prev.filter((s) => s.id !== serviceId));
+    },
+    onPayLater: handlePayLater,
+    onComplete: handleComplete,
+    onEditUnitPrice: updateUnitPrice,
+  };
 
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-2 lg:gap-3 px-2 sm:px-4 lg:pl-2 lg:pr-6 py-2 overflow-hidden">
-        <div className="hidden lg:flex lg:w-[8%] lg:min-w-0 lg:h-full lg:min-h-0 lg:flex-col overflow-hidden">
+  return (
+    <div
+      data-page="pos"
+      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background"
+    >
+      {/* Desktop: row | Mobile: categories strip + products + cart sheet (seller-admin POS) */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-2 py-2 sm:px-4 lg:flex-row lg:gap-3 lg:pl-2 lg:pr-6">
+        <div className="order-1 flex w-full shrink-0 overflow-hidden lg:order-1 lg:flex lg:h-full lg:min-h-0 lg:w-[8%] lg:min-w-0 lg:flex-col">
           <POSCategorySidebar
             branchId={branchId}
             selectedCategoryId={selectedCategory}
             onCategorySelect={(id) => setSelectedCategory(id)}
-            variant="vertical"
           />
         </div>
 
-        <div className="lg:hidden flex-1 overflow-y-auto min-h-0">
-          {mobileTab === "categories" && (
-            <div className="p-1">
-              <POSCategorySidebar
-                branchId={branchId}
-                selectedCategoryId={selectedCategory}
-                onCategorySelect={(id) => {
-                  setSelectedCategory(id);
-                  setMobileTab("products");
-                }}
-                variant="horizontal"
-              />
-            </div>
-          )}
-          {mobileTab === "products" && (
-            <div className="p-1">
-              <ProductSection
-                products={products}
-                cart={cart}
-                search={search}
-                onSearchChange={setSearch}
-                onAddToCart={addToCart}
-              />
-            </div>
-          )}
-          {mobileTab === "cart" && (
-            <div className="flex flex-col h-full">
-              <OrderSection
-                branchId={branchId}
-                customer={customer}
-                cart={cart}
-                subtotal={subtotal}
-                servicesTotal={servicesTotal}
-                grandTotal={grandTotal}
-                discount={discount}
-                loading={loading}
-                appliedServices={appliedServices}
-                onSelectCustomer={(c) => setCustomer(c)}
-                onClearCustomer={() => setCustomer(null)}
-                onUpdateQty={updateQty}
-                onSetDiscount={setDiscount}
-                onAddService={(service) => {
-                  setAppliedServices((prev) => {
-                    if (prev.some((s) => s.id === service.id)) return prev;
-                    return [...prev, service];
-                  });
-                }}
-                onRemoveService={(serviceId) => {
-                  setAppliedServices((prev) => prev.filter((s) => s.id !== serviceId));
-                }}
-                onPayLater={handlePayLater}
-                onComplete={handleComplete}
-                onEditUnitPrice={updateUnitPrice}
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="hidden lg:block flex-1 min-h-0 lg:w-[57%] lg:flex-shrink-0 overflow-hidden">
+        <div className="order-2 flex h-full min-h-0 flex-1 shrink-0 overflow-hidden pb-24 lg:order-2 lg:w-[57%] lg:pb-0">
           <ProductSection
             products={products}
             cart={cart}
@@ -523,36 +478,60 @@ export function POSPage() {
           />
         </div>
 
-        <div className="hidden lg:flex lg:flex-col lg:w-[35%] lg:flex-shrink-0 h-full min-h-0 overflow-hidden bg-white border-l border-slate-200">
-          <OrderSection
-            branchId={branchId}
-            customer={customer}
-            cart={cart}
-            subtotal={subtotal}
-            servicesTotal={servicesTotal}
-            grandTotal={grandTotal}
-            discount={discount}
-            loading={loading}
-            appliedServices={appliedServices}
-            onSelectCustomer={(c) => setCustomer(c)}
-            onClearCustomer={() => setCustomer(null)}
-            onUpdateQty={updateQty}
-            onSetDiscount={setDiscount}
-            onAddService={(service) => {
-              setAppliedServices((prev) => {
-                if (prev.some((s) => s.id === service.id)) return prev;
-                return [...prev, service];
-              });
-            }}
-            onRemoveService={(serviceId) => {
-              setAppliedServices((prev) => prev.filter((s) => s.id !== serviceId));
-            }}
-            onPayLater={handlePayLater}
-            onComplete={handleComplete}
-            onEditUnitPrice={updateUnitPrice}
-          />
+        <div className="order-3 hidden h-full min-h-0 overflow-hidden border-l border-border bg-card lg:flex lg:w-[35%] lg:shrink-0 lg:flex-col">
+          <OrderSection {...orderSectionShared} />
         </div>
       </div>
+
+      {/* Mobile: floating cart (seller-admin) */}
+      <div className="pointer-events-none fixed bottom-4 left-4 right-4 z-40 flex justify-center lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileOrderOpen(true)}
+          className="pointer-events-auto flex min-w-[200px] items-center gap-3 rounded-2xl border border-white/15 bg-primary px-6 py-4 text-primary-foreground shadow-xl"
+        >
+          <ShoppingCart className="h-6 w-6 shrink-0" />
+          <span className="font-semibold">
+            Cart ({cart.length}) · {formatPrice(grandTotal)}
+          </span>
+        </button>
+      </div>
+
+      {/* Mobile: order bottom sheet */}
+      {mobileOrderOpen ? (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm lg:hidden"
+            onClick={() => setMobileOrderOpen(false)}
+            aria-hidden
+          />
+          <div
+            className={cn(
+              "fixed inset-x-0 bottom-0 z-50 flex max-h-[90vh] flex-col rounded-t-2xl border border-b-0 border-border bg-card shadow-[0_-4px_24px_rgba(0,0,0,0.18)] lg:hidden"
+            )}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
+              <h2 className="text-lg font-semibold text-foreground">
+                Order · {formatPrice(grandTotal)}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setMobileOrderOpen(false)}
+                className="rounded-lg p-2 text-foreground hover:bg-muted"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <OrderSection
+                {...orderSectionShared}
+                onCloseMobileSheet={() => setMobileOrderOpen(false)}
+              />
+            </div>
+          </div>
+        </>
+      ) : null}
 
       <InvoicePreviewModal
         open={invoicePreviewOpen}

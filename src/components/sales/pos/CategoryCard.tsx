@@ -17,9 +17,9 @@ export function CategoryCard({ name, imageSrc, active, sizeClass, onClick }: Cat
   const btnBase =
     "flex flex-col items-center justify-center rounded-lg transition-all backdrop-blur-sm flex-shrink-0";
   const btnActive =
-    "bg-gradient-to-br from-indigo-500 to-purple-600 text-white border-2 border-indigo-500 shadow-lg shadow-indigo-500/30";
+    "bg-primary text-primary-foreground border-2 border-primary shadow-lg shadow-black/15";
   const btnInactive =
-    "bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 hover:border-indigo-300 hover:shadow-md";
+    "bg-slate-50 hover:bg-slate-100 text-slate-900 border border-slate-200 hover:border-primary/40 hover:shadow-md";
 
   return (
     <button onClick={onClick} className={`${btnBase} ${active ? btnActive : btnInactive} ${sizeClass}`}>
@@ -29,14 +29,14 @@ export function CategoryCard({ name, imageSrc, active, sizeClass, onClick }: Cat
           alt={name}
           width={24}
           height={24}
-          className={`w-6 h-6 rounded-lg object-cover mb-1 ${active ? "ring-2 ring-white/30" : ""}`}
+          className={`w-6 h-6 rounded-lg object-cover mb-1 ${active ? "ring-2 ring-primary-foreground/25" : ""}`}
           unoptimized
         />
       ) : (
-        <Package className={`w-6 h-6 mb-1 ${active ? "text-white" : "text-slate-900"}`} />
+        <Package className={`mb-1 h-6 w-6 ${active ? "text-primary-foreground" : "text-slate-900"}`} />
       )}
       <span
-        className={`text-sm font-semibold text-center leading-tight line-clamp-2 ${active ? "text-white" : "text-slate-900"}`}
+        className={`line-clamp-2 text-center text-sm font-semibold leading-tight ${active ? "text-primary-foreground" : "text-slate-900"}`}
       >
         {name}
       </span>
