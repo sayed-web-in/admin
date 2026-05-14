@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -40,6 +40,124 @@ import { Input } from "@/components/ui/input";
 
 const PAGE_SIZE = 20;
 
+type SupplierFormState = {
+  name: string;
+  email: string;
+  phone: string;
+  company: string;
+  address: string;
+  isActive: boolean;
+  advanceBalance: string;
+};
+
+function SupplierFormFields({
+  form,
+  setForm,
+  isEdit,
+  saving,
+  onSubmit,
+}: {
+  form: SupplierFormState;
+  setForm: Dispatch<SetStateAction<SupplierFormState>>;
+  isEdit?: boolean;
+  saving: boolean;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="mb-1.5 block text-sm font-medium">Name *</label>
+        <Input
+          value={form.name}
+          onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+          placeholder="Supplier name"
+        />
+      </div>
+      <div>
+        <label className="mb-1.5 block text-sm font-medium">Company</label>
+        <Input
+          value={form.company}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, company: e.target.value }))
+          }
+          placeholder="Company name"
+        />
+      </div>
+      <div>
+        <label className="mb-1.5 block text-sm font-medium">Phone</label>
+        <Input
+          value={form.phone}
+          onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+          placeholder="01XXXXXXXXX"
+        />
+      </div>
+      <div>
+        <label className="mb-1.5 block text-sm font-medium">Email</label>
+        <Input
+          type="email"
+          value={form.email}
+          onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+          placeholder="email@example.com"
+        />
+      </div>
+      <div>
+        <label className="mb-1.5 block text-sm font-medium">Address</label>
+        <Input
+          value={form.address}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, address: e.target.value }))
+          }
+          placeholder="Full address"
+        />
+      </div>
+      <div>
+        <label className="mb-1.5 block text-sm font-medium">
+          Opening advance balance {!isEdit && "(optional)"}
+        </label>
+        <Input
+          type="number"
+          min={0}
+          step="0.01"
+          value={form.advanceBalance}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, advanceBalance: e.target.value }))
+          }
+          placeholder={isEdit ? "Leave blank to keep current" : "0.00"}
+        />
+        {isEdit ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Set amount to update; leave blank to leave advance unchanged.
+          </p>
+        ) : null}
+      </div>
+      <div>
+        <label className="mb-1.5 block text-sm font-medium">Status</label>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() =>
+              setForm((prev) => ({ ...prev, isActive: !prev.isActive }))
+            }
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              form.isActive ? "bg-primary" : "bg-gray-300"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                form.isActive ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+          <span className="text-sm">{form.isActive ? "Active" : "Inactive"}</span>
+        </div>
+      </div>
+      <Button className="mt-2 w-full" onClick={onSubmit} disabled={saving}>
+        {saving ? "Saving..." : isEdit ? "Update Supplier" : "Add Supplier"}
+      </Button>
+    </div>
+  );
+}
+
 interface Supplier {
   id: number;
   name: string;
@@ -66,7 +184,7 @@ export default function SuppliersPage() {
   const [editModal, setEditModal] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<SupplierFormState>({
     name: "",
     email: "",
     phone: "",
@@ -297,73 +415,6 @@ export default function SuppliersPage() {
     },
   ];
 
-  const SupplierFormFields = ({ isEdit = false }: { isEdit?: boolean }) => (
-    <div className="space-y-3">
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">Name *</label>
-        <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Supplier name" />
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">Company</label>
-        <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} placeholder="Company name" />
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">Phone</label>
-        <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="01XXXXXXXXX" />
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">Email</label>
-        <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" />
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">Address</label>
-        <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Full address" />
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">
-          Opening advance balance {!isEdit && "(optional)"}
-        </label>
-        <Input
-          type="number"
-          min={0}
-          step="0.01"
-          value={form.advanceBalance}
-          onChange={(e) =>
-            setForm({ ...form, advanceBalance: e.target.value })
-          }
-          placeholder={isEdit ? "Leave blank to keep current" : "0.00"}
-        />
-        {isEdit ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            Set amount to update; leave blank to leave advance unchanged.
-          </p>
-        ) : null}
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium">Status</label>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setForm({ ...form, isActive: !form.isActive })}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              form.isActive ? "bg-primary" : "bg-gray-300"
-            }`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                form.isActive ? "translate-x-6" : "translate-x-1"
-              }`}
-            />
-          </button>
-          <span className="text-sm">{form.isActive ? "Active" : "Inactive"}</span>
-        </div>
-      </div>
-      <Button className="mt-2 w-full" onClick={isEdit ? handleEdit : handleAdd} disabled={saving}>
-        {saving ? "Saving..." : isEdit ? "Update Supplier" : "Add Supplier"}
-      </Button>
-    </div>
-  );
-
   return (
     <div className="w-full min-w-0 space-y-5 pb-8 pt-1 sm:space-y-6 sm:pb-10 sm:pt-2">
       <InventoryListPageHeader
@@ -444,11 +495,22 @@ export default function SuppliersPage() {
       </div>
 
       <Modal open={addModal} onOpenChange={setAddModal} title="Add Supplier">
-        <SupplierFormFields />
+        <SupplierFormFields
+          form={form}
+          setForm={setForm}
+          saving={saving}
+          onSubmit={handleAdd}
+        />
       </Modal>
 
       <Modal open={editModal} onOpenChange={setEditModal} title="Edit Supplier">
-        <SupplierFormFields isEdit />
+        <SupplierFormFields
+          form={form}
+          setForm={setForm}
+          isEdit
+          saving={saving}
+          onSubmit={handleEdit}
+        />
       </Modal>
     </div>
   );

@@ -58,6 +58,7 @@ interface OrderItemRow {
   quantity: number;
   unitPrice: string | number;
   total: string | number;
+  cancelled?: boolean;
   storeProduct: {
     branchId: number;
     branch?: { id: number; name: string };
@@ -245,6 +246,7 @@ export default function EcommerceOrderDetailPage() {
 
   const [completeLoading, setCompleteLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancellingLineId, setCancellingLineId] = useState<number | null>(null);
 
   const loadOrder = useCallback(async () => {
     if (!Number.isFinite(id) || id < 1) return;
@@ -254,6 +256,7 @@ export default function EcommerceOrderDetailPage() {
       setOrder(o);
       const init: Record<number, string[]> = {};
       for (const line of o.items) {
+        if (line.cancelled) continue;
         if (line.storeProduct.product.hasImei) init[line.id] = [];
       }
       setSelectedSerials(init);
@@ -292,6 +295,7 @@ export default function EcommerceOrderDetailPage() {
   useEffect(() => {
     if (!order) return;
     for (const line of order.items) {
+      if (line.cancelled) continue;
       if (line.storeProduct.product.hasImei) {
         loadSerialsForLine(line);
       }
@@ -322,8 +326,10 @@ export default function EcommerceOrderDetailPage() {
     })();
   }, []);
 
-  const branchId = order?.items[0]?.storeProduct.branchId;
-  const branchName = order?.items[0]?.storeProduct.branch?.name;
+  const firstActiveLine = order?.items.find((l) => !l.cancelled);
+  const branchId = firstActiveLine?.storeProduct.branchId;
+  const branchName = firstActiveLine?.storeProduct.branch?.name;
+  const activeLineCount = order?.items.filter((l) => !l.cancelled).length ?? 0;
 
   const canUpdateStatus =
     order &&
@@ -336,6 +342,7 @@ export default function EcommerceOrderDetailPage() {
     !order.sale &&
     order.status !== "CANCELLED" &&
     order.status !== "DELIVERED" &&
+    activeLineCount > 0 &&
     branchId != null;
 
   const canCancel =
@@ -347,6 +354,7 @@ export default function EcommerceOrderDetailPage() {
   const imeiValid = useMemo(() => {
     if (!order) return false;
     for (const line of order.items) {
+      if (line.cancelled) continue;
       if (!line.storeProduct.product.hasImei) continue;
       const picked = selectedSerials[line.id] ?? [];
       if (picked.length !== line.quantity) return false;
@@ -397,7 +405,7 @@ export default function EcommerceOrderDetailPage() {
       return;
     }
     const imeiLines = order.items
-      .filter((l) => l.storeProduct.product.hasImei)
+      .filter((l) => !l.cancelled && l.storeProduct.product.hasImei)
       .map((l) => ({
         orderItemId: l.id,
         serialNumbers: selectedSerials[l.id] ?? [],
@@ -423,6 +431,28 @@ export default function EcommerceOrderDetailPage() {
       toast.error(e instanceof Error ? e.message : "Complete failed");
     } finally {
       setCompleteLoading(false);
+    }
+  };
+
+  const handleCancelLine = async (line: OrderItemRow) => {
+    if (!order || line.cancelled) return;
+    if (
+      !window.confirm(
+        `Cancel this product line only? (${line.storeProduct.product.name})`,
+      )
+    )
+      return;
+    setCancellingLineId(line.id);
+    try {
+      await apiFetch(`/orders/${order.id}/items/${line.id}/cancel`, {
+        method: "POST",
+      });
+      toast.success("Line cancelled");
+      await loadOrder();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Cancel failed");
+    } finally {
+      setCancellingLineId(null);
     }
   };
 
@@ -488,11 +518,15 @@ export default function EcommerceOrderDetailPage() {
                 const opts = serialOptions[line.id] ?? [];
                 const serialStrings = opts.map((o) => o.serial);
                 const picked = selectedSerials[line.id] ?? [];
+                const lineCancelled = Boolean(line.cancelled);
 
                 return (
                   <li
                     key={line.id}
-                    className="rounded-xl border border-border/80 bg-muted/20 p-4"
+                    className={cn(
+                      "rounded-xl border border-border/80 bg-muted/20 p-4",
+                      lineCancelled && "border-dashed opacity-75",
+                    )}
                   >
                     <div className="flex gap-4">
                       <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-background ring-1 ring-border">
@@ -510,9 +544,21 @@ export default function EcommerceOrderDetailPage() {
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold leading-snug">
-                          {line.storeProduct.product.name}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p
+                            className={cn(
+                              "font-semibold leading-snug",
+                              lineCancelled && "text-muted-foreground line-through decoration-muted-foreground/80",
+                            )}
+                          >
+                            {line.storeProduct.product.name}
+                          </p>
+                          {lineCancelled && (
+                            <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-red-700 dark:text-red-400">
+                              Cancelled
+                            </span>
+                          )}
+                        </div>
                         {v && (
                           <p className="text-xs text-muted-foreground">{v}</p>
                         )}
@@ -520,19 +566,42 @@ export default function EcommerceOrderDetailPage() {
                           Qty {line.quantity} ·{" "}
                           {formatPrice(Number(line.unitPrice))} each
                         </p>
-                        {hasImei && (
+                        {hasImei && !lineCancelled && (
                           <div className="mt-3 flex items-center gap-2 text-xs font-medium text-primary">
                             <Smartphone className="h-3.5 w-3.5" />
                             IMEI / serial — pick {line.quantity} unit(s)
                           </div>
                         )}
                       </div>
-                      <div className="text-right font-semibold tabular-nums">
-                        {formatPrice(Number(line.total))}
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <div
+                          className={cn(
+                            "text-right font-semibold tabular-nums",
+                            lineCancelled && "text-muted-foreground line-through",
+                          )}
+                        >
+                          {formatPrice(Number(line.total))}
+                        </div>
+                        {canCancel && !lineCancelled && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            disabled={cancellingLineId !== null}
+                            onClick={() => handleCancelLine(line)}
+                          >
+                            {cancellingLineId === line.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              "Cancel"
+                            )}
+                          </Button>
+                        )}
                       </div>
                     </div>
 
-                    {hasImei && canComplete && (
+                    {hasImei && canComplete && !lineCancelled && (
                       <div className="mt-4 border-t border-border/60 pt-4">
                         <p className="mb-2 text-xs font-medium text-muted-foreground">
                           Select {line.quantity} IMEI / serial (searchable)

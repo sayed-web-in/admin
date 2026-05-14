@@ -63,11 +63,19 @@ export function ProductSection({
 
     // 1) Exact IMEI/serial match (same pattern as seller admin: prioritize IMEI)
     try {
-      const serialHit = await apiFetch<{
-        serial?: string;
+      const serialRes = await apiFetch<{
+        matches?: Array<{
+          status?: string;
+          batch?: { storeProduct?: { id?: number; productId?: number } };
+        }>;
         status?: string;
         batch?: { storeProduct?: { id?: number; productId?: number } };
       }>(`/sales/serial/${encodeURIComponent(query)}`);
+
+      const serialHit =
+        Array.isArray(serialRes.matches) && serialRes.matches.length > 0
+          ? serialRes.matches[0]
+          : serialRes;
 
       const serialStatus = String(serialHit?.status ?? "").toUpperCase();
       const storeProductId = Number(serialHit?.batch?.storeProduct?.id ?? 0);

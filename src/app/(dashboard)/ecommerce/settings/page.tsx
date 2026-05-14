@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Save, Settings, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiUpload } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/media";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -126,26 +127,80 @@ export default function EcommerceSettingsPage() {
   const [state, setState] = useState<StorefrontSettings>(emptyState);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  /** Logo file chosen in UI; uploaded + written to DB only on Save. */
+  const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null);
+  const [pendingLogoPreview, setPendingLogoPreview] = useState<string | null>(null);
+  const pendingPreviewRef = useRef<string | null>(null);
+
+  const revokePendingPreview = useCallback(() => {
+    if (pendingPreviewRef.current) {
+      URL.revokeObjectURL(pendingPreviewRef.current);
+      pendingPreviewRef.current = null;
+    }
+    setPendingLogoPreview(null);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await apiFetch<StorefrontSettings>("/storefront-settings/public");
       setState(res);
+      setPendingLogoFile(null);
+      revokePendingPreview();
     } catch {
       setState(emptyState);
+      setPendingLogoFile(null);
+      revokePendingPreview();
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [revokePendingPreview]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    return () => {
+      if (pendingPreviewRef.current) {
+        URL.revokeObjectURL(pendingPreviewRef.current);
+        pendingPreviewRef.current = null;
+      }
+    };
+  }, []);
+
   const save = async () => {
+    if (state.headerBrand.mode === "TEXT" && !state.headerBrand.brandName.trim()) {
+      toast.error("Brand / store name is required for text header.");
+      return;
+    }
+    const hasSavedLogo = state.headerBrand.brandLogoUrl.trim().length > 0;
+    if (
+      state.headerBrand.mode === "IMAGE" &&
+      !hasSavedLogo &&
+      !pendingLogoFile
+    ) {
+      toast.error("Choose a logo file, then click Save — or switch to Text mode.");
+      return;
+    }
+
     setSaving(true);
     try {
+      let brandLogoUrl = state.headerBrand.brandLogoUrl.trim();
+      if (state.headerBrand.mode === "IMAGE" && pendingLogoFile) {
+        const fd = new FormData();
+        fd.append("file", pendingLogoFile);
+        const uploaded = await apiUpload("/upload/logo", fd);
+        const url =
+          typeof uploaded?.url === "string"
+            ? uploaded.url
+            : typeof uploaded?.data?.url === "string"
+              ? uploaded.data.url
+              : "";
+        if (!url) throw new Error("Logo upload did not return a URL");
+        brandLogoUrl = url;
+      }
+
       await apiFetch("/storefront-settings", {
         method: "PATCH",
         body: JSON.stringify({
@@ -153,8 +208,9 @@ export default function EcommerceSettingsPage() {
           topPhoneHref: state.topBar.phoneHref,
           topLinks: state.topBar.links.filter((x) => x.label || x.href),
           headerBrandMode: state.headerBrand.mode,
-          brandName: state.headerBrand.brandName,
-          brandLogoUrl: state.headerBrand.brandLogoUrl,
+          brandName: state.headerBrand.brandName.trim(),
+          brandLogoUrl:
+            state.headerBrand.mode === "IMAGE" ? brandLogoUrl : "",
           footerDescription: state.footer.description,
           footerQuickLinks: state.footer.quickLinks.filter((x) => x.label || x.href),
           footerCustomerLinks: state.footer.customerLinks.filter((x) => x.label || x.href),
@@ -166,6 +222,8 @@ export default function EcommerceSettingsPage() {
         }),
       });
       toast.success("Ecommerce settings saved");
+      setPendingLogoFile(null);
+      revokePendingPreview();
       void load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed");
@@ -211,40 +269,136 @@ export default function EcommerceSettingsPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <select
-            value={state.headerBrand.mode}
-            onChange={(e) =>
-              setState((prev) => ({
-                ...prev,
-                headerBrand: { ...prev.headerBrand, mode: e.target.value as HeaderBrandMode },
-              }))
-            }
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="TEXT">Header name text</option>
-            <option value="IMAGE">Header image logo</option>
-          </select>
-          <Input
-            value={state.headerBrand.brandName}
-            onChange={(e) =>
-              setState((prev) => ({
-                ...prev,
-                headerBrand: { ...prev.headerBrand, brandName: e.target.value },
-              }))
-            }
-            placeholder="Brand name"
-          />
-          <Input
-            value={state.headerBrand.brandLogoUrl}
-            onChange={(e) =>
-              setState((prev) => ({
-                ...prev,
-                headerBrand: { ...prev.headerBrand, brandLogoUrl: e.target.value },
-              }))
-            }
-            placeholder="Brand logo URL"
-          />
+        <div className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-foreground">Header brand type</label>
+              <p className="text-xs text-muted-foreground">
+                Text = store name in the navbar. Image = pick a file, then <strong>Save Settings</strong> uploads it
+                and stores the URL in the database.
+              </p>
+            </div>
+            <select
+              value={state.headerBrand.mode}
+              onChange={(e) => {
+                const mode = e.target.value as HeaderBrandMode;
+                setState((prev) => ({
+                  ...prev,
+                  headerBrand: {
+                    ...prev.headerBrand,
+                    mode,
+                  },
+                }));
+                if (mode === "TEXT") {
+                  setPendingLogoFile(null);
+                  revokePendingPreview();
+                }
+              }}
+              className="h-10 w-full max-w-xs shrink-0 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="TEXT">Text (store name)</option>
+              <option value="IMAGE">Image (logo upload)</option>
+            </select>
+          </div>
+
+          {state.headerBrand.mode === "TEXT" ? (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Brand / store name *</label>
+              <Input
+                value={state.headerBrand.brandName}
+                onChange={(e) =>
+                  setState((prev) => ({
+                    ...prev,
+                    headerBrand: { ...prev.headerBrand, brandName: e.target.value },
+                  }))
+                }
+                placeholder="e.g. Future Technology"
+              />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Logo image</label>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Choose PNG/SVG/WebP — file is sent to the server only when you click <strong>Save Settings</strong>{" "}
+                  (then DB is updated). Preview ~200×33px on storefront.
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <div className="flex h-[33px] w-[200px] max-w-full shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background px-1">
+                    {pendingLogoPreview || state.headerBrand.brandLogoUrl ? (
+                      <img
+                        src={
+                          pendingLogoPreview ||
+                          resolveMediaUrl(state.headerBrand.brandLogoUrl)
+                        }
+                        alt=""
+                        className="max-h-[33px] max-w-[200px] w-auto object-contain"
+                      />
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground">No logo yet</span>
+                    )}
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={saving}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!file) return;
+                        revokePendingPreview();
+                        const url = URL.createObjectURL(file);
+                        pendingPreviewRef.current = url;
+                        setPendingLogoPreview(url);
+                        setPendingLogoFile(file);
+                      }}
+                      className="text-sm text-muted-foreground file:mr-2 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20"
+                    />
+                    {pendingLogoFile ? (
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        Unsaved logo — click Save Settings to upload and store in the database.
+                      </p>
+                    ) : null}
+                    {state.headerBrand.brandLogoUrl || pendingLogoFile ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-fit"
+                        disabled={saving}
+                        onClick={() => {
+                          setPendingLogoFile(null);
+                          revokePendingPreview();
+                          setState((prev) => ({
+                            ...prev,
+                            headerBrand: { ...prev.headerBrand, brandLogoUrl: "" },
+                          }));
+                        }}
+                      >
+                        Remove logo
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">
+                  Site name (alt text & fallback)
+                </label>
+                <Input
+                  value={state.headerBrand.brandName}
+                  onChange={(e) =>
+                    setState((prev) => ({
+                      ...prev,
+                      headerBrand: { ...prev.headerBrand, brandName: e.target.value },
+                    }))
+                  }
+                  placeholder="e.g. Future Technology — used as img alt if logo is set"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <LinkEditor

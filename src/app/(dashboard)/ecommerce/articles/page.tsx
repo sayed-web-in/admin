@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import {
   FileText,
   Plus,
@@ -10,11 +9,9 @@ import {
   RotateCcw,
   CheckCircle,
   XCircle,
-  Image as ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { apiFetch, apiUpload } from "@/lib/api";
-import { resolveMediaUrl } from "@/lib/media";
+import { apiFetch } from "@/lib/api";
 import { unwrapPaginated } from "@/lib/apiList";
 import { FilterBar } from "@/components/common/FilterBar";
 import { DataTable } from "@/components/common/DataTable";
@@ -39,7 +36,6 @@ interface Article {
   id: number;
   title: string;
   slug: string;
-  image?: string | null;
   content: string;
   isActive: boolean;
   createdAt: string;
@@ -59,9 +55,6 @@ export default function EcommerceArticlesPage() {
   const [formTitle, setFormTitle] = useState("");
   const [formContent, setFormContent] = useState("");
   const [formIsActive, setFormIsActive] = useState(true);
-  const [formImage, setFormImage] = useState<File | null>(null);
-  const [formImagePreview, setFormImagePreview] = useState("");
-  const [formImageUrl, setFormImageUrl] = useState("");
 
   const fetchArticles = useCallback(async () => {
     setLoading(true);
@@ -85,9 +78,6 @@ export default function EcommerceArticlesPage() {
     setFormTitle("");
     setFormContent("");
     setFormIsActive(true);
-    setFormImage(null);
-    setFormImagePreview("");
-    setFormImageUrl("");
     setModalOpen(true);
   };
 
@@ -96,9 +86,6 @@ export default function EcommerceArticlesPage() {
     setFormTitle(article.title);
     setFormContent(article.content || "");
     setFormIsActive(article.isActive);
-    setFormImage(null);
-    setFormImagePreview(article.image || "");
-    setFormImageUrl(article.image || "");
     setModalOpen(true);
   };
 
@@ -114,18 +101,9 @@ export default function EcommerceArticlesPage() {
 
     setSaving(true);
     try {
-      let imageUrl = formImageUrl;
-      if (formImage) {
-        const fd = new FormData();
-        fd.append("file", formImage);
-        const uploaded = await apiUpload("/upload/single", fd);
-        imageUrl = uploaded?.url ?? uploaded?.data?.url ?? "";
-      }
-
       const payload = {
         title: formTitle.trim(),
         content: formContent,
-        image: imageUrl || undefined,
         isActive: formIsActive,
       };
 
@@ -183,28 +161,6 @@ export default function EcommerceArticlesPage() {
       label: "#",
       className: "w-12",
       render: (_: Article, i: number) => i + 1,
-    },
-    {
-      key: "image",
-      label: "Image",
-      className: "w-[4.75rem]",
-      render: (row: Article) =>
-        row.image ? (
-          <div className="relative h-12 w-20 rounded-xl border border-border/70 overflow-hidden bg-muted">
-            <Image
-              src={resolveMediaUrl(row.image)}
-              alt={row.title}
-              fill
-              className="object-cover"
-              sizes="80px"
-              unoptimized
-            />
-          </div>
-        ) : (
-          <div className="flex h-12 w-20 items-center justify-center rounded-xl border border-border/60 bg-muted/30 text-muted-foreground">
-            <ImageIcon className="h-5 w-5" />
-          </div>
-        ),
     },
     {
       key: "title",
@@ -320,7 +276,7 @@ export default function EcommerceArticlesPage() {
         icon={<FileText className="w-5 h-5" />}
         size="xl"
         footer={
-          <div className="flex justify-end gap-2 w-full">
+          <div className="flex w-full justify-end gap-2">
             <Button variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>
               Cancel
             </Button>
@@ -332,7 +288,7 @@ export default function EcommerceArticlesPage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1.5">Title *</label>
+            <label className="mb-1.5 block text-sm font-medium">Title *</label>
             <Input
               value={formTitle}
               onChange={(e) => setFormTitle(e.target.value)}
@@ -341,40 +297,7 @@ export default function EcommerceArticlesPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1.5">Cover Image</label>
-            <div className="flex items-start gap-3">
-              <div className="relative w-32 h-20 rounded-xl border border-border bg-muted overflow-hidden flex-shrink-0">
-                {formImagePreview ? (
-                  <Image
-                    src={resolveMediaUrl(formImagePreview)}
-                    alt="preview"
-                    fill
-                    className="object-cover"
-                    sizes="128px"
-                    unoptimized
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <ImageIcon size={22} className="text-muted-foreground" />
-                  </div>
-                )}
-              </div>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setFormImage(file);
-                  setFormImagePreview(URL.createObjectURL(file));
-                }}
-                className="text-sm text-muted-foreground file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1.5">Content *</label>
+            <label className="mb-1.5 block text-sm font-medium">Content *</label>
             <DescriptionEditor
               value={formContent}
               onChange={setFormContent}

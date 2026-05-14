@@ -26,11 +26,18 @@ import { Input } from "@/components/ui/input";
 
 interface OrderItem {
   id: number;
-  productName: string;
+  productName?: string;
+  storeProduct?: { product?: { name?: string } };
   variantLabel?: string;
   quantity: number;
   unitPrice: number;
   total: number;
+  cancelled?: boolean;
+}
+
+function orderItemLabel(item: OrderItem): string {
+  const n = item.productName?.trim() || item.storeProduct?.product?.name?.trim();
+  return n || "Product";
 }
 
 interface OrderTimeline {
@@ -56,6 +63,7 @@ interface Order {
   note?: string;
   timeline?: OrderTimeline[];
   createdAt: string;
+  sale?: { id: number; invoiceNumber?: string } | null;
 }
 
 interface Branch {
@@ -76,6 +84,7 @@ export default function OrdersPage() {
   const [completeModal, setCompleteModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [cancellingItemId, setCancellingItemId] = useState<number | null>(null);
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [completeForm, setCompleteForm] = useState({
@@ -164,6 +173,27 @@ export default function OrdersPage() {
       fetchOrders();
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const handleCancelLine = async (order: Order, item: OrderItem) => {
+    if (item.cancelled) return;
+    if (
+      !confirm(
+        `Cancel only "${orderItemLabel(item)}"? Other items stay on this order.`,
+      )
+    )
+      return;
+    setCancellingItemId(item.id);
+    try {
+      await apiFetch(`/orders/${order.id}/items/${item.id}/cancel`, { method: "POST" });
+      const full = await apiFetch<Order>(`/orders/${order.id}`);
+      setSelectedOrder(full);
+      fetchOrders();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setCancellingItemId(null);
     }
   };
 
@@ -380,12 +410,33 @@ export default function OrdersPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {selectedOrder.items.map((item) => (
-                        <tr key={item.id}>
+                      {selectedOrder.items.map((item) => {
+                        const st = selectedOrder.status?.toLowerCase();
+                        const canLineCancel =
+                          !item.cancelled &&
+                          !selectedOrder.sale &&
+                          st !== "cancelled" &&
+                          st !== "delivered" &&
+                          st !== "completed";
+                        return (
+                        <tr key={item.id} className={item.cancelled ? "opacity-60" : undefined}>
                           <td className="px-3 py-2">
-                            <p>{item.productName}</p>
+                            <p className={item.cancelled ? "line-through text-muted-foreground" : undefined}>{orderItemLabel(item)}</p>
                             {item.variantLabel && (
                               <p className="text-xs text-muted-foreground">{item.variantLabel}</p>
+                            )}
+                            {item.cancelled && (
+                              <p className="text-[10px] font-semibold uppercase text-red-600 mt-0.5">Cancelled</p>
+                            )}
+                            {canLineCancel && (
+                              <button
+                                type="button"
+                                className="mt-1.5 text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                                disabled={cancellingItemId !== null}
+                                onClick={() => handleCancelLine(selectedOrder, item)}
+                              >
+                                {cancellingItemId === item.id ? "…" : "Cancel this line"}
+                              </button>
                             )}
                           </td>
                           <td className="px-3 py-2 text-center">{item.quantity}</td>
@@ -394,7 +445,8 @@ export default function OrdersPage() {
                             {formatPrice(Number(item.total || item.unitPrice * item.quantity))}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

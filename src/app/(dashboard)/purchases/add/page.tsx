@@ -64,7 +64,8 @@ interface StoreProductRow {
     attributes?: { attributeValue?: { value?: string } }[];
   };
   quantity: number;
-  unitPrice: number;
+  /** Quantity-weighted average acquisition cost from batches (not retail). */
+  avgPurchaseUnitCost?: number;
   sellingPrice?: number;
 }
 
