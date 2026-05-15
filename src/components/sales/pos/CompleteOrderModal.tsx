@@ -238,7 +238,32 @@ export function CompleteOrderModal({
     });
   };
 
+  /** Account only when cash/bank is actually received — due (registered customer) needs no account. */
+  const cashRequired = totalCashRows > 0.009;
+  const hasValidPaymentRow = paymentRows.some(
+    (r) => r.accountId && getRowAmount(r) > 0.009,
+  );
+  const amountWithoutAccount = paymentRows.some(
+    (r) => getRowAmount(r) > 0.009 && !r.accountId,
+  );
+
   const handleConfirm = async () => {
+    if (!customer && due > 0.009) {
+      toast.error(
+        "Walk-in customer cannot buy on due. Select a registered customer or pay in full.",
+      );
+      return;
+    }
+    if (amountWithoutAccount) {
+      toast.error("Each payment amount must have an account selected.");
+      return;
+    }
+    if (cashRequired && !hasValidPaymentRow) {
+      toast.error(
+        "Select at least one payment account for the amount received.",
+      );
+      return;
+    }
     const hasAnyNonCash = paymentRows.some((r) => {
       const t = getAccountTypeById(r.accountId);
       return isNonCashType(t) && getRowAmount(r) > 0;
@@ -274,7 +299,16 @@ export function CompleteOrderModal({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={handleConfirm} disabled={loading || cart.length === 0}>
+          <Button
+            onClick={handleConfirm}
+            disabled={
+              loading ||
+              cart.length === 0 ||
+              amountWithoutAccount ||
+              (cashRequired && !hasValidPaymentRow) ||
+              (cashRequired && accounts.length === 0)
+            }
+          >
             {loading ? "Processing..." : "Confirm Order"}
           </Button>
         </div>

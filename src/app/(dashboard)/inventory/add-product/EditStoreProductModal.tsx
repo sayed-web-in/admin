@@ -23,6 +23,7 @@ interface EditStoreProductModalProps {
   onDelete: () => void;
   storeProduct: StoreProductRow | null;
   canEditPurchaseCost?: boolean;
+  showStockFields?: boolean;
   loading?: boolean;
 }
 
@@ -48,6 +49,7 @@ export function EditStoreProductModal({
   onDelete,
   storeProduct,
   canEditPurchaseCost = false,
+  showStockFields = false,
   loading = false,
 }: EditStoreProductModalProps) {
   const [form, setForm] = useState<EditStoreProductFormData>({
@@ -151,28 +153,30 @@ export function EditStoreProductModal({
           />
         </div>
 
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-foreground">
-            Purchase cost per unit (average)
-          </label>
-          <p className="mb-1.5 text-xs text-muted-foreground">
-            {canEditPurchaseCost
-              ? "Initial stock only: you can edit this before any sale."
-              : "Locked when multiple batches exist or any sale has happened."}
-          </p>
-          <Input
-            type="text"
-            inputMode="decimal"
-            value={form.purchaseCostPerUnit}
-            disabled={loading || !canEditPurchaseCost}
-            readOnly={!canEditPurchaseCost}
-            aria-readonly={!canEditPurchaseCost}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, purchaseCostPerUnit: e.target.value }))
-            }
-            className={`rounded-xl ${canEditPurchaseCost ? "" : "cursor-not-allowed opacity-90"}`}
-          />
-        </div>
+        {showStockFields ? (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Purchase cost per unit (average)
+            </label>
+            <p className="mb-1.5 text-xs text-muted-foreground">
+              {canEditPurchaseCost
+                ? "Initial stock only: you can edit this before any sale."
+                : "Locked when multiple batches exist or any sale has happened."}
+            </p>
+            <Input
+              type="text"
+              inputMode="decimal"
+              value={form.purchaseCostPerUnit}
+              disabled={loading || !canEditPurchaseCost}
+              readOnly={!canEditPurchaseCost}
+              aria-readonly={!canEditPurchaseCost}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, purchaseCostPerUnit: e.target.value }))
+              }
+              className={`rounded-xl ${canEditPurchaseCost ? "" : "cursor-not-allowed opacity-90"}`}
+            />
+          </div>
+        ) : null}
 
         <div>
           <label className="mb-1.5 block text-sm font-medium text-foreground">

@@ -15,6 +15,7 @@ import {
 import { apiFetch } from "@/lib/api";
 import { formatPrice, formatDate } from "@/lib/utils";
 import { getSelectedBranch } from "@/lib/auth";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
 import { FilterBar } from "@/components/common/FilterBar";
@@ -71,6 +72,15 @@ interface Branch {
   name: string;
 }
 
+type AccountOption = {
+  id: number;
+  name?: string;
+  accountName?: string;
+  type?: string;
+  accountType?: string;
+  isActive?: boolean;
+};
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,14 +97,35 @@ export default function OrdersPage() {
   const [cancellingItemId, setCancellingItemId] = useState<number | null>(null);
 
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [completeForm, setCompleteForm] = useState({
-    branchId: "", paymentMethod: "cash",
+    branchId: "",
+    paymentMethod: "cash",
+    paymentAccountId: "",
   });
 
   useEffect(() => {
     apiFetch<any>("/branches")
       .then((d) => setBranches(d.branches || d.data || (Array.isArray(d) ? d : [])))
       .catch(() => {});
+    apiFetch<AccountOption[] | { data?: AccountOption[] }>("/finance/accounts")
+      .then((res) => {
+        const list = Array.isArray(res) ? res : res.data || [];
+        const active = list.filter((a) => a?.id != null && (a.isActive ?? true));
+        setAccounts(active);
+        const cash =
+          active.find(
+            (a) =>
+              String(a.accountType ?? a.type ?? "").toLowerCase() === "cash",
+          ) ?? active[0];
+        if (cash) {
+          setCompleteForm((f) => ({
+            ...f,
+            paymentAccountId: String(cash.id),
+          }));
+        }
+      })
+      .catch(() => setAccounts([]));
   }, []);
 
   const fetchOrders = useCallback(async () => {
@@ -138,29 +169,50 @@ export default function OrdersPage() {
 
   const openComplete = (order: Order) => {
     setSelectedOrder(order);
+    const cash =
+      accounts.find(
+        (a) => String(a.accountType ?? a.type ?? "").toLowerCase() === "cash",
+      ) ?? accounts[0];
     setCompleteForm({
       branchId: branchId ? String(branchId) : "",
       paymentMethod: "cash",
+      paymentAccountId: cash ? String(cash.id) : "",
     });
     setCompleteModal(true);
   };
 
   const handleComplete = async () => {
     if (!selectedOrder) return;
+    const branchNum = Number(completeForm.branchId);
+    const accountNum = Number(completeForm.paymentAccountId);
+    if (!Number.isFinite(branchNum) || branchNum < 1) {
+      toast.error("Select a branch");
+      return;
+    }
+    if (!Number.isFinite(accountNum) || accountNum < 1) {
+      toast.error("Select a payment account — sale cannot complete without one");
+      return;
+    }
+    if (accounts.length === 0) {
+      toast.error("No active accounts found. Add a cash/bank account in Finance first.");
+      return;
+    }
     setProcessing(true);
     try {
       await apiFetch(`/orders/${selectedOrder.id}/complete`, {
         method: "POST",
         body: JSON.stringify({
-          branchId: Number(completeForm.branchId) || undefined,
+          branchId: branchNum,
           paymentMethod: completeForm.paymentMethod,
+          paymentAccountId: accountNum,
         }),
       });
+      toast.success("Order completed and sale created");
       setCompleteModal(false);
       setSelectedOrder(null);
       fetchOrders();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Complete failed");
     } finally {
       setProcessing(false);
     }
@@ -591,10 +643,39 @@ export default function OrdersPage() {
               </select>
             </div>
 
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Payment account *</label>
+              {accounts.length === 0 ? (
+                <p className="text-sm text-destructive">
+                  No active accounts. Add one under Finance → Accounts before selling.
+                </p>
+              ) : (
+                <select
+                  value={completeForm.paymentAccountId}
+                  onChange={(e) =>
+                    setCompleteForm({ ...completeForm, paymentAccountId: e.target.value })
+                  }
+                  className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="">Select account</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.accountName ?? a.name ?? `Account #${a.id}`}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
             <Button
               className="w-full"
               onClick={handleComplete}
-              disabled={processing || !completeForm.branchId}
+              disabled={
+                processing ||
+                !completeForm.branchId ||
+                !completeForm.paymentAccountId ||
+                accounts.length === 0
+              }
             >
               {processing ? (
                 <>

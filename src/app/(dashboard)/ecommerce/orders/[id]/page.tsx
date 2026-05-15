@@ -232,7 +232,7 @@ export default function EcommerceOrderDetailPage() {
   const [statusSaving, setStatusSaving] = useState(false);
 
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
-  const [paymentAccountId, setPaymentAccountId] = useState<string>("_none");
+  const [paymentAccountId, setPaymentAccountId] = useState<string>("");
 
   const [serialOptions, setSerialOptions] = useState<
     Record<number, SerialOpt[]>
@@ -319,7 +319,7 @@ export default function EcommerceOrderDetailPage() {
               String(a.accountType ?? a.type ?? "").toLowerCase() === "cash"
           ) ?? normalized[0];
         if (cash) setPaymentAccountId(String(cash.id));
-        else setPaymentAccountId("_none");
+        else setPaymentAccountId("");
       } catch {
         setAccounts([]);
       }
@@ -400,6 +400,15 @@ export default function EcommerceOrderDetailPage() {
 
   const handleComplete = async () => {
     if (!order || branchId == null) return;
+    const accountNum = Number(paymentAccountId);
+    if (!Number.isFinite(accountNum) || accountNum < 1) {
+      toast.error("Select a payment account — sale cannot complete without one");
+      return;
+    }
+    if (accounts.length === 0) {
+      toast.error("No active accounts. Add one under Finance → Accounts first.");
+      return;
+    }
     if (!imeiValid) {
       toast.error("Select the correct number of IMEI/serial for each line");
       return;
@@ -417,11 +426,7 @@ export default function EcommerceOrderDetailPage() {
         body: JSON.stringify({
           branchId,
           paymentMethod: order.paymentMethod || "cod",
-          ...(paymentAccountId &&
-          paymentAccountId !== "_none" &&
-          Number(paymentAccountId) > 0
-            ? { paymentAccountId: Number(paymentAccountId) }
-            : {}),
+          paymentAccountId: accountNum,
           ...(imeiLines.length ? { imeiLines } : {}),
         }),
       });
@@ -767,20 +772,23 @@ export default function EcommerceOrderDetailPage() {
               <p className="mt-1 text-sm text-muted-foreground">
                 Creates a completed sale, decrements stock, marks IMEIs sold.
               </p>
-              {accounts.length > 0 && (
-                <div className="mt-4">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Payment account (optional)
-                  </label>
+              <div className="mt-4">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Payment account *
+                </label>
+                {accounts.length === 0 ? (
+                  <p className="mt-1 text-sm text-destructive">
+                    No active accounts. Add one under Finance → Accounts before selling.
+                  </p>
+                ) : (
                   <Select
-                    value={paymentAccountId}
+                    value={paymentAccountId || undefined}
                     onValueChange={setPaymentAccountId}
                   >
                     <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Skip ledger posting" />
+                      <SelectValue placeholder="Select account" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="_none">None (no ledger)</SelectItem>
                       {accounts.map((a) => (
                         <SelectItem key={String(a.id)} value={String(a.id)}>
                           {a.accountName ?? a.name ?? String(a.id)}
@@ -788,11 +796,16 @@ export default function EcommerceOrderDetailPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-              )}
+                )}
+              </div>
               <Button
                 className="mt-4 w-full gap-2"
-                disabled={!imeiValid || completeLoading}
+                disabled={
+                  !imeiValid ||
+                  completeLoading ||
+                  accounts.length === 0 ||
+                  !paymentAccountId
+                }
                 onClick={handleComplete}
               >
                 {completeLoading ? (

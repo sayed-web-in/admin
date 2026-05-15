@@ -24,6 +24,11 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { AddOptionButton } from "@/components/common/AddOptionButton";
+import { QuickAddCategoryModal } from "@/components/inventory/quick-add/QuickAddCategoryModal";
+import { QuickAddBrandModal } from "@/components/inventory/quick-add/QuickAddBrandModal";
+import { QuickAddUnitModal } from "@/components/inventory/quick-add/QuickAddUnitModal";
 import {
   ProductVariantModal,
   type VariantEntry,
@@ -169,10 +174,16 @@ function AddProductPageContent() {
     batchStoreProductId,
     setBatchStoreProductId,
     refreshStoreRows,
+    reloadMasterData,
     startNewProductSession,
     isTab1Valid,
     router,
   } = useAddProductPage();
+
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showBrandModal, setShowBrandModal] = useState(false);
+  const [showUnitModal, setShowUnitModal] = useState(false);
+  const [showStoreStockFields, setShowStoreStockFields] = useState(false);
 
   const [variantModalOpen, setVariantModalOpen] = useState(false);
   const [variantEdit, setVariantEdit] = useState<VariantEntry | null>(null);
@@ -445,40 +456,50 @@ function AddProductPageContent() {
                 <label className="text-sm font-medium mb-1.5 block">
                   Category <span className="text-red-500">*</span>
                 </label>
-                <Combobox
-                  items={categoryItems}
-                  value={selectedCategory}
-                  onValueChange={(item) => {
-                    setField("categoryId", item?.value ?? 0);
-                    setField("subcategoryId", 0);
-                  }}
-                  isItemEqualToValue={itemEqual}
-                >
-                  <ComboboxInput
-                    className={basicFieldClass}
-                    placeholder={
-                      form.branchId
-                        ? "Search or select category…"
-                        : "Select branch in the top bar"
-                    }
-                    showClear={form.categoryId > 0}
+                <div className="flex items-stretch gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Combobox
+                      items={categoryItems}
+                      value={selectedCategory}
+                      onValueChange={(item) => {
+                        setField("categoryId", item?.value ?? 0);
+                        setField("subcategoryId", 0);
+                      }}
+                      isItemEqualToValue={itemEqual}
+                    >
+                      <ComboboxInput
+                        className={basicFieldClass}
+                        placeholder={
+                          form.branchId
+                            ? "Search or select category…"
+                            : "Select branch in the top bar"
+                        }
+                        showClear={form.categoryId > 0}
+                        disabled={!form.branchId}
+                      />
+                      <ComboboxContent sideOffset={4} className="z-50">
+                        <ComboboxEmpty>
+                          {form.branchId
+                            ? "No categories found."
+                            : "Select a branch in the header first."}
+                        </ComboboxEmpty>
+                        <ComboboxList>
+                          {categoryItems.map((item) => (
+                            <ComboboxItem key={item.value} value={item}>
+                              {item.label}
+                            </ComboboxItem>
+                          ))}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
+                  </div>
+                  <AddOptionButton
+                    aria-label="Add category"
+                    title="Add category"
                     disabled={!form.branchId}
+                    onClick={() => setShowCategoryModal(true)}
                   />
-                  <ComboboxContent sideOffset={4} className="z-50">
-                    <ComboboxEmpty>
-                      {form.branchId
-                        ? "No categories found."
-                        : "Select a branch in the header first."}
-                    </ComboboxEmpty>
-                    <ComboboxList>
-                      {categoryItems.map((item) => (
-                        <ComboboxItem key={item.value} value={item}>
-                          {item.label}
-                        </ComboboxItem>
-                      ))}
-                    </ComboboxList>
-                  </ComboboxContent>
-                </Combobox>
+                </div>
               </div>
               <div>
                 <label className="text-sm font-medium mb-1.5 block">
@@ -514,55 +535,73 @@ function AddProductPageContent() {
                 <label className="text-sm font-medium mb-1.5 block">
                   Brand <span className="text-red-500">*</span>
                 </label>
-                <Combobox
-                  items={brandItems}
-                  value={selectedBrand}
-                  onValueChange={(item) => setField("brandId", item?.value ?? 0)}
-                  isItemEqualToValue={itemEqual}
-                >
-                  <ComboboxInput
-                    className={basicFieldClass}
-                    placeholder="Search or select brand…"
-                    showClear={form.brandId > 0}
+                <div className="flex items-stretch gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Combobox
+                      items={brandItems}
+                      value={selectedBrand}
+                      onValueChange={(item) => setField("brandId", item?.value ?? 0)}
+                      isItemEqualToValue={itemEqual}
+                    >
+                      <ComboboxInput
+                        className={basicFieldClass}
+                        placeholder="Search or select brand…"
+                        showClear={form.brandId > 0}
+                      />
+                      <ComboboxContent sideOffset={4} className="z-50">
+                        <ComboboxEmpty>No brands found.</ComboboxEmpty>
+                        <ComboboxList>
+                          {brandItems.map((item) => (
+                            <ComboboxItem key={item.value} value={item}>
+                              {item.label}
+                            </ComboboxItem>
+                          ))}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
+                  </div>
+                  <AddOptionButton
+                    aria-label="Add brand"
+                    title="Add brand"
+                    onClick={() => setShowBrandModal(true)}
                   />
-                  <ComboboxContent sideOffset={4} className="z-50">
-                    <ComboboxEmpty>No brands found.</ComboboxEmpty>
-                    <ComboboxList>
-                      {brandItems.map((item) => (
-                        <ComboboxItem key={item.value} value={item}>
-                          {item.label}
-                        </ComboboxItem>
-                      ))}
-                    </ComboboxList>
-                  </ComboboxContent>
-                </Combobox>
+                </div>
               </div>
               <div>
                 <label className="text-sm font-medium mb-1.5 block">
                   Unit <span className="text-red-500">*</span>
                 </label>
-                <Combobox
-                  items={unitItems}
-                  value={selectedUnit}
-                  onValueChange={(item) => setField("unitId", item?.value ?? 0)}
-                  isItemEqualToValue={itemEqual}
-                >
-                  <ComboboxInput
-                    className={basicFieldClass}
-                    placeholder="Search or select unit…"
-                    showClear={form.unitId > 0}
+                <div className="flex items-stretch gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Combobox
+                      items={unitItems}
+                      value={selectedUnit}
+                      onValueChange={(item) => setField("unitId", item?.value ?? 0)}
+                      isItemEqualToValue={itemEqual}
+                    >
+                      <ComboboxInput
+                        className={basicFieldClass}
+                        placeholder="Search or select unit…"
+                        showClear={form.unitId > 0}
+                      />
+                      <ComboboxContent sideOffset={4} className="z-50">
+                        <ComboboxEmpty>No units found.</ComboboxEmpty>
+                        <ComboboxList>
+                          {unitItems.map((item) => (
+                            <ComboboxItem key={item.value} value={item}>
+                              {item.label}
+                            </ComboboxItem>
+                          ))}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
+                  </div>
+                  <AddOptionButton
+                    aria-label="Add unit"
+                    title="Add unit"
+                    onClick={() => setShowUnitModal(true)}
                   />
-                  <ComboboxContent sideOffset={4} className="z-50">
-                    <ComboboxEmpty>No units found.</ComboboxEmpty>
-                    <ComboboxList>
-                      {unitItems.map((item) => (
-                        <ComboboxItem key={item.value} value={item}>
-                          {item.label}
-                        </ComboboxItem>
-                      ))}
-                    </ComboboxList>
-                  </ComboboxContent>
-                </Combobox>
+                </div>
               </div>
               <div>
                 <label className="text-sm font-medium mb-1.5 block">
@@ -983,15 +1022,43 @@ function AddProductPageContent() {
                 : "Save the product above first, then add it to branches here."
             }
           />
-          <Button
-            type="button"
-            className="h-10 w-full shrink-0 gap-2 rounded-xl sm:h-9 sm:w-auto"
-            disabled={!draftProductId}
-            onClick={() => setStoreModalOpen(true)}
-          >
-            <Plus size={16} className="shrink-0" aria-hidden />
-            Add store product
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+            <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+              <div className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-background/80 px-3 py-2">
+                <span className="select-none text-sm font-medium text-foreground">
+                  Show stock fields
+                </span>
+                <Switch
+                  checked={showStoreStockFields}
+                  onCheckedChange={setShowStoreStockFields}
+                  aria-label="Show stock fields in add store product modal"
+                />
+                <span
+                  className={cn(
+                    "min-w-[3rem] rounded-md border px-1.5 py-0.5 text-center text-[11px] font-semibold",
+                    showStoreStockFields
+                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                      : "border-border bg-muted text-muted-foreground"
+                  )}
+                >
+                  {showStoreStockFields ? "ON" : "OFF"}
+                </span>
+              </div>
+              <Button
+                type="button"
+                className="h-10 shrink-0 gap-2 rounded-xl sm:h-9"
+                disabled={!draftProductId}
+                onClick={() => setStoreModalOpen(true)}
+              >
+                <Plus size={16} className="shrink-0" aria-hidden />
+                Add store product
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground sm:text-right">
+              OFF hides supplier, quantity, purchase cost, and serial/IMEI in the
+              add-store modal.
+            </p>
+          </div>
         </div>
         <div className="p-5 sm:p-6 md:p-7">
           <div className="overflow-x-auto rounded-xl border border-border/80 ring-1 ring-black/[0.03] dark:ring-white/[0.05]">
@@ -1237,6 +1304,7 @@ function AddProductPageContent() {
         hasImei={form.hasSerialNumber}
         variants={form.variants}
         existingStoreRows={storeRows}
+        showStockFields={showStoreStockFields}
         onAdded={() => {
           if (draftProductId) void refreshStoreRows(draftProductId);
         }}
@@ -1259,7 +1327,35 @@ function AddProductPageContent() {
         }}
         storeProduct={selectedStoreRow}
         canEditPurchaseCost={selectedStoreRow?.canEditPurchaseCost ?? false}
+        showStockFields={showStoreStockFields}
         loading={actionLoading}
+      />
+
+      <QuickAddCategoryModal
+        open={showCategoryModal}
+        onOpenChange={setShowCategoryModal}
+        defaultBranchId={form.branchId}
+        onCreated={async (created) => {
+          await reloadMasterData();
+          if (created?.id) setField("categoryId", created.id);
+        }}
+      />
+      <QuickAddBrandModal
+        open={showBrandModal}
+        onOpenChange={setShowBrandModal}
+        defaultBranchId={form.branchId}
+        onCreated={async (created) => {
+          await reloadMasterData();
+          if (created?.id) setField("brandId", created.id);
+        }}
+      />
+      <QuickAddUnitModal
+        open={showUnitModal}
+        onOpenChange={setShowUnitModal}
+        onCreated={async (created) => {
+          await reloadMasterData();
+          if (created?.id) setField("unitId", created.id);
+        }}
       />
 
       <ConfirmModal

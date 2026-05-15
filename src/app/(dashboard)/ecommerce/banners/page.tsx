@@ -45,12 +45,43 @@ interface Banner {
   sortOrder?: number;
 }
 
-const POSITION_OPTIONS = [
-  { value: "HERO_LARGE", label: "Hero Large" },
-  { value: "HERO_SMALL", label: "Hero Small" },
-  { value: "MIDDLE_LEFT", label: "Middle Left" },
-  { value: "MIDDLE_RIGHT", label: "Middle Right" },
-];
+/** Matches frontend storefront slots (`HeroBannerClient`, `MiddleBanners`). */
+const BANNER_SIZE_BY_TYPE: Record<
+  Banner["type"],
+  { label: string; size: string; hint: string; previewClass: string }
+> = {
+  HERO_LARGE: {
+    label: "Hero Large",
+    size: "856 × 400 px",
+    hint: "Homepage hero slider (left, ~70% width). Use exact ratio 856:400.",
+    previewClass: "aspect-[856/400]",
+  },
+  HERO_SMALL: {
+    label: "Hero Small",
+    size: "374 × 196 px",
+    hint: "Homepage hero side (right column, max 2 banners). If only one small banner is active, frontend may show 374 × 400 px.",
+    previewClass: "aspect-[374/196]",
+  },
+  MIDDLE_LEFT: {
+    label: "Middle Left",
+    size: "616 × 225 px",
+    hint: "Homepage middle section — left half (desktop).",
+    previewClass: "aspect-[616/225]",
+  },
+  MIDDLE_RIGHT: {
+    label: "Middle Right",
+    size: "616 × 225 px",
+    hint: "Homepage middle section — right half (desktop).",
+    previewClass: "aspect-[616/225]",
+  },
+};
+
+const POSITION_OPTIONS = (
+  Object.entries(BANNER_SIZE_BY_TYPE) as [Banner["type"], (typeof BANNER_SIZE_BY_TYPE)[Banner["type"]]][]
+).map(([value, meta]) => ({
+  value,
+  label: `${meta.label} — ${meta.size}`,
+}));
 
 const INPUT_CLS =
   "w-full h-9 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary";
@@ -99,6 +130,8 @@ export default function BannersPage() {
 
   const heroSmallTypeDisabled =
     heroSmallCountExcludingEditing >= MAX_HERO_SMALL && editing?.type !== "HERO_SMALL";
+
+  const selectedSizeMeta = BANNER_SIZE_BY_TYPE[formType];
 
   const openCreate = () => {
     setEditing(null);
@@ -250,11 +283,19 @@ export default function BannersPage() {
     {
       key: "position",
       label: "Position",
-      render: (row: Banner) => (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-          {POSITION_OPTIONS.find((p) => p.value === row.type)?.label ?? row.type ?? "—"}
-        </span>
-      ),
+      render: (row: Banner) => {
+        const meta = row.type ? BANNER_SIZE_BY_TYPE[row.type] : null;
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+              {meta?.label ?? row.type ?? "—"}
+            </span>
+            {meta?.size && (
+              <span className="text-[11px] text-muted-foreground tabular-nums">{meta.size}</span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "sortOrder",
@@ -379,19 +420,26 @@ export default function BannersPage() {
           {/* Image */}
           <div>
             <label className={LABEL_CLS}>Banner Image *</label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Recommended:{" "}
+              <span className="font-semibold text-foreground tabular-nums">{selectedSizeMeta.size}</span>{" "}
+              ({selectedSizeMeta.label})
+            </p>
             <div className="flex items-start gap-3">
-              <div className="relative w-32 h-20 rounded-xl border border-border bg-muted overflow-hidden flex-shrink-0">
+              <div
+                className={`relative w-40 rounded-xl border border-border bg-muted overflow-hidden flex-shrink-0 ${selectedSizeMeta.previewClass}`}
+              >
                 {formImagePreview ? (
                   <Image
                     src={resolveMediaUrl(formImagePreview)}
                     alt="preview"
                     fill
                     className="object-cover"
-                    sizes="128px"
+                    sizes="160px"
                     unoptimized
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center">
+                  <div className="absolute inset-0 flex items-center justify-center">
                     <ImageIcon size={24} className="text-muted-foreground" />
                   </div>
                 )}
@@ -426,7 +474,10 @@ export default function BannersPage() {
 
           {/* Type */}
           <div>
-            <label className={LABEL_CLS}>Type</label>
+            <label className={LABEL_CLS}>
+              Type{" "}
+              <span className="font-normal text-muted-foreground tabular-nums">({selectedSizeMeta.size})</span>
+            </label>
             <select
               className={INPUT_CLS}
               value={formType}
@@ -442,8 +493,11 @@ export default function BannersPage() {
                 </option>
               ))}
             </select>
+            <p className="mt-1.5 rounded-lg border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Storefront:</span> {selectedSizeMeta.hint}
+            </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Hero Small: at most {MAX_HERO_SMALL} banners.
+              Hero Small: at most {MAX_HERO_SMALL} active banners on the homepage.
             </p>
           </div>
 

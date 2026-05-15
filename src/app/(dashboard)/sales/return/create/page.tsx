@@ -574,8 +574,8 @@ function CreateSalesReturnContent() {
               <p className="text-sm text-muted-foreground">Refund (customer)</p>
               <p className="text-2xl font-bold text-primary">{formatPrice(refundPreview)}</p>
               <p className="text-xs text-muted-foreground">
-                Gross {formatPrice(subtotal)} − damage {formatPrice(damageTotal)} · Return gain (P&L){" "}
-                {formatPrice(damageTotal)}
+                Gross {formatPrice(subtotal)} − damage {formatPrice(damageTotal)} · After submit, complete the return
+                to restore stock (seller-admin).
               </p>
             </div>
             <div className="flex gap-2">

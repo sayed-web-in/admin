@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
+import { toast } from "sonner";
 import { unwrapPaginated } from "@/lib/apiList";
 import {
   INVENTORY_CARD_SHELL,
@@ -353,12 +354,27 @@ export default function SuppliersPage() {
   };
 
   const handleDelete = async (supplier: Supplier) => {
-    if (!confirm(`Delete supplier "${supplier.name}"?`)) return;
+    const due = Number(supplier.totalDue || 0);
+    const advance = Number(supplier.advanceBalance || 0);
+    if (due > 0.009 || advance > 0.009) {
+      toast.error(
+        "Cannot delete: clear supplier due and advance balance first, or deactivate the supplier.",
+      );
+      return;
+    }
+    if (
+      !confirm(
+        `Delete supplier "${supplier.name}"? This is only allowed when there are no purchases, stock batches, or ledger transactions linked to this supplier.`,
+      )
+    ) {
+      return;
+    }
     try {
       await apiFetch(`/suppliers/${supplier.id}`, { method: "DELETE" });
+      toast.success("Supplier deleted");
       await Promise.all([fetchSuppliers(), loadSummary()]);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Delete failed");
+      toast.error(err instanceof Error ? err.message : "Delete failed");
     }
   };
 

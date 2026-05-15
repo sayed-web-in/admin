@@ -69,6 +69,8 @@ interface StoreProductModalProps {
   variants: VariantEntry[];
   /** Current branch listings for this product — used to disable duplicates (seller-admin behavior). */
   existingStoreRows?: StoreProductRow[];
+  /** When false, hide supplier / quantity / purchase cost / serial fields (seller-admin default OFF). */
+  showStockFields?: boolean;
   onAdded?: () => void;
 }
 
@@ -80,6 +82,7 @@ export function StoreProductModal({
   hasImei,
   variants,
   existingStoreRows = [],
+  showStockFields = false,
   onAdded,
 }: StoreProductModalProps) {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -344,6 +347,7 @@ export function StoreProductModal({
       ? Math.max(0, parseInt(quantity, 10) || 0)
       : 0;
     if (
+      showStockFields &&
       qtyNum > 0 &&
       (!purchasePrice?.trim() || parseFloat(purchasePrice) < 0)
     ) {
@@ -351,6 +355,7 @@ export function StoreProductModal({
         "Please enter purchase cost per unit when quantity is given";
     }
     if (
+      showStockFields &&
       hasImei &&
       quantity?.trim() &&
       parseInt(quantity, 10) > 0 &&
@@ -401,7 +406,7 @@ export function StoreProductModal({
         isBestDeal,
         isFeatured,
       };
-      if (hasImei && qtyNum > 0) {
+      if (showStockFields && hasImei && qtyNum > 0) {
         payload.serialNumbers = serialNumbers;
       }
       await apiFetch("/products/add-to-store", {
@@ -546,6 +551,7 @@ export function StoreProductModal({
 
         {showDetailsSection && (
           <>
+            {showStockFields ? (
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">
                 Supplier
@@ -575,8 +581,11 @@ export function StoreProductModal({
                 </ComboboxContent>
               </Combobox>
             </div>
+            ) : null}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {showStockFields ? (
+              <>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">
                   Quantity
@@ -619,6 +628,8 @@ export function StoreProductModal({
                   </p>
                 )}
               </div>
+              </>
+              ) : null}
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">
                   Selling price <span className="text-red-500">*</span>
@@ -758,7 +769,7 @@ export function StoreProductModal({
               </div>
             </div>
 
-            {hasImei && (
+            {showStockFields && hasImei && (
               <div
                 className={
                   fieldErrors.serialNumbers

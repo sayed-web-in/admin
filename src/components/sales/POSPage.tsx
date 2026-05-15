@@ -246,6 +246,26 @@ export function POSPage() {
       toast.error("Walking customer due sale is not allowed. Please pay full amount.");
       return false;
     }
+    const cashReceived = Number(opts.receivedAmount || 0);
+    /** Due on account needs no payment account — only cash/bank received does. */
+    const cashRequired = cashReceived > 0.009;
+    const paymentLines = (opts.payments || []).filter(
+      (p) => p.accountId && Number(p.amount || 0) > 0.009,
+    );
+    if (cashRequired && paymentLines.length === 0) {
+      toast.error(
+        "Select at least one payment account for the amount received.",
+      );
+      return false;
+    }
+    if (
+      (opts.payments || []).some(
+        (p) => Number(p.amount || 0) > 0.009 && !p.accountId,
+      )
+    ) {
+      toast.error("Each payment amount must have an account selected.");
+      return false;
+    }
     setLoading(true);
     const paidAmt = opts.receivedAmount;
     const changeAmt = Math.max(0, totalPaid - grandTotal);

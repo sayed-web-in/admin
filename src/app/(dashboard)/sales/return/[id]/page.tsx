@@ -163,32 +163,43 @@ export default function SalesReturnDetailPage() {
   const openRefundModal = () => {
     if (!data || !returnId) return;
     setModalError("");
-    setModalAmount(remainingCash);
+    const isPending = (data.status ?? data.accounting?.status) === "pending";
+    setModalAmount(isPending ? remainingCash || Number(data.refundAmount) : remainingCash);
     setModalAccountId(data.refundAccountId ? String(data.refundAccountId) : "");
     setRefundModalOpen(true);
   };
 
   const submitRefundPayment = async () => {
     if (!returnId || !data) return;
+    const isPending = (data.status ?? data.accounting?.status) === "pending";
     const amt = Number(modalAmount);
-    if (!Number.isFinite(amt) || amt <= 0) {
+    if (!Number.isFinite(amt) || amt < 0) {
+      setModalError("Enter a valid refund amount (0 or more).");
+      return;
+    }
+    if (!isPending && amt <= 0) {
       setModalError("Enter a positive refund amount.");
       return;
     }
-    if (amt > remainingCash + 1e-6) {
+    if (amt > remainingCash + 1e-6 && !isPending) {
       setModalError(`Amount cannot exceed remaining ${formatPrice(remainingCash)}.`);
       return;
     }
     const accId = parseInt(modalAccountId, 10);
-    if (!accId) {
-      setModalError("Select a refund account.");
+    if (amt > 0.005 && !accId) {
+      setModalError("Select a refund account when paying cash.");
       return;
     }
-    const acc = accounts.find((a) => a.id === accId);
-    const bal = acc ? num(acc.balance) : 0;
-    if (amt > bal + 1e-6) {
-      setModalError(`Selected account balance is ${formatPrice(bal)} — reduce the amount or pick another account.`);
-      return;
+    if (amt > 0.005 && accId) {
+      const acc = accounts.find((a) => a.id === accId);
+      const bal = acc ? num(acc.balance) : 0;
+      if (amt > bal + 1e-6) {
+        setModalError(`Selected account balance is ${formatPrice(bal)} — reduce the amount or pick another account.`);
+        return;
+      }
+    }
+    if (isPending && !accId && amt <= 0.005) {
+      /* complete with no cash — due/advance only */
     }
     setSubmittingRefund(true);
     setModalError("");
@@ -196,12 +207,16 @@ export default function SalesReturnDetailPage() {
       const updated = await apiFetch<ReturnDetail>(`/sales/returns/${returnId}`, {
         method: "PATCH",
         body: JSON.stringify({
-          paymentAmount: amt,
-          refundAccountId: accId,
+          status: isPending ? "completed" : undefined,
+          paymentAmount: amt > 0.005 ? amt : undefined,
+          refundAmount: amt > 0.005 ? num(data.cashRefundPaid) + amt : undefined,
+          refundAccountId: accId > 0 ? accId : undefined,
         }),
       });
       setData(updated);
-      toast.success("Refund payment recorded");
+      toast.success(
+        data.status === "pending" ? "Return completed" : "Refund payment recorded",
+      );
       setRefundModalOpen(false);
     } catch (e) {
       setModalError(e instanceof Error ? e.message : "Request failed");
@@ -329,12 +344,26 @@ export default function SalesReturnDetailPage() {
                 <p className="text-lg font-semibold text-emerald-600">{formatPrice(Number(data.returnGain))}</p>
               </div>
             </div>
-            {remainingCash > 0.005 ? (
+            {(data.status ?? data.accounting?.status) === "pending" ? (
+              <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm">
+                  <p className="font-medium text-foreground">Return pending</p>
+                  <p className="text-muted-foreground">
+                    Complete to restore stock and post accounting (seller-admin). Pay cash now or 0 if due/advance
+                    covers the refund.
+                  </p>
+                </div>
+                <Button type="button" className="shrink-0 rounded-xl" onClick={openRefundModal}>
+                  Complete return
+                </Button>
+              </div>
+            ) : null}
+            {remainingCash > 0.005 && (data.status ?? data.accounting?.status) === "completed" ? (
               <div className="mt-4 flex flex-col gap-3 rounded-xl border border-primary/25 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm">
                   <p className="font-medium text-foreground">Cash refund pending</p>
                   <p className="text-muted-foreground">
-                    Due / advance were adjusted when the return was created. Pay the remaining{" "}
+                    Pay the remaining{" "}
                     <span className="font-semibold text-foreground">{formatPrice(remainingCash)}</span> from a finance
                     account (seller-admin style).
                   </p>
@@ -382,8 +411,8 @@ export default function SalesReturnDetailPage() {
           <Modal
             open={refundModalOpen}
             onOpenChange={setRefundModalOpen}
-            title="Record cash refund"
-            description="Choose the account to debit and how much to pay out now. You can pay in one or more steps until the pending amount is cleared."
+            title={(data.status ?? data.accounting?.status) === "pending" ? "Complete return" : "Record cash refund"}
+            description="Restore stock and post refunds. Use 0 pay amount if due/advance covers the customer refund; otherwise pick account and amount."
             icon={<CheckCircle className="h-6 w-6" />}
             size="sm"
             footer={

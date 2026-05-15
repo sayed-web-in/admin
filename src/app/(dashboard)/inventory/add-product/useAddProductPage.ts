@@ -267,39 +267,42 @@ export function useAddProductPage() {
     }
   }, []);
 
+  const reloadMasterData = useCallback(async () => {
+    const [cat, brd, un, tax] = await Promise.all([
+      apiFetch<unknown>("/categories?limit=500").catch(() => ({ data: [] })),
+      apiFetch<unknown>("/brands?limit=500").catch(() => ({ data: [] })),
+      apiFetch<unknown>("/units?limit=500").catch(() => ({ data: [] })),
+      apiFetch<unknown>("/finance/tax-rates").catch(() => []),
+    ]);
+    setCategoriesAll(extractList<CategoryRow>(cat));
+    setBrands(
+      extractList<{ id: number; name: string }>(brd).map((b) => ({
+        id: b.id,
+        name: b.name,
+      }))
+    );
+    setUnits(
+      extractList<{ id: number; name: string }>(un).map((u) => ({
+        id: u.id,
+        name: u.name,
+      }))
+    );
+    const tr = Array.isArray(tax) ? tax : extractList(tax);
+    setTaxRates(
+      (tr as { id: number; name: string; rate: unknown }[]).map((t) => ({
+        id: t.id,
+        name: t.name,
+        rate: Number(t.rate),
+      }))
+    );
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setDataLoading(true);
       try {
-        const [cat, brd, un, tax] = await Promise.all([
-          apiFetch<unknown>("/categories?limit=500").catch(() => ({ data: [] })),
-          apiFetch<unknown>("/brands?limit=500").catch(() => ({ data: [] })),
-          apiFetch<unknown>("/units?limit=500").catch(() => ({ data: [] })),
-          apiFetch<unknown>("/finance/tax-rates").catch(() => []),
-        ]);
-        if (cancelled) return;
-        setCategoriesAll(extractList<CategoryRow>(cat));
-        setBrands(
-          extractList<{ id: number; name: string }>(brd).map((b) => ({
-            id: b.id,
-            name: b.name,
-          }))
-        );
-        setUnits(
-          extractList<{ id: number; name: string }>(un).map((u) => ({
-            id: u.id,
-            name: u.name,
-          }))
-        );
-        const tr = Array.isArray(tax) ? tax : extractList(tax);
-        setTaxRates(
-          (tr as { id: number; name: string; rate: unknown }[]).map((t) => ({
-            id: t.id,
-            name: t.name,
-            rate: Number(t.rate),
-          }))
-        );
+        await reloadMasterData();
       } finally {
         if (!cancelled) setDataLoading(false);
       }
@@ -307,7 +310,7 @@ export function useAddProductPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadMasterData]);
 
   useEffect(() => {
     if (isEditMode) return;
@@ -785,6 +788,7 @@ export function useAddProductPage() {
     resetForm,
     startNewProductSession,
     refreshStoreRows,
+    reloadMasterData,
     addVariant,
     removeVariant,
     getVariantDeleteBlockReason,
