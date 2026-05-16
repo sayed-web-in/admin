@@ -447,7 +447,7 @@ export default function TrialBalancePage() {
                 </div>
                 <Row
                   label="Total revenue (net)"
-                  sub="Completed sales (grand total) + income − sale-return refunds + return gain"
+                  sub="Sales + manual income − refunds (return gain is in COGS/refund, not added twice)"
                   value={data.equity.totalRevenue}
                   indent
                   valueClass="text-emerald-600"

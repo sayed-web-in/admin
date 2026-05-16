@@ -89,7 +89,7 @@ const ROWS: { label: string; key: DataKeys; type: RowType; tip?: string }[] = [
     label: "Return gain (damage retention)",
     key: "returnGain",
     type: "sub",
-    tip: "Portion of sales returns not refunded to the customer (seller-admin P&L line)",
+    tip: "COGS reverted minus refund (informational). Already in net sales and COGS — not added to Total Income.",
   },
   { label: "Total Income", key: "totalIncome", type: "highlight" },
   { label: "Gross Profit", key: "grossProfit", type: "highlight" },

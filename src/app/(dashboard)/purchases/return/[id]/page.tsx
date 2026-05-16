@@ -8,7 +8,6 @@ import {
   ArrowLeftRight,
   Building2,
   FileText,
-  Info,
   Loader2,
   Package,
   RefreshCcw,
@@ -62,18 +61,6 @@ type PurchaseReturnDetail = {
     paymentAccount?: { name?: string; accountNumber?: string | null } | null;
   };
   items: ReturnItemDetail[];
-  accounting: {
-    returnAmount: number;
-    purchaseReference: string;
-    supplierDueReduced: boolean;
-    supplierName: string | null;
-    stockReduced: boolean;
-    batchAdjusted: boolean;
-    accountCredited: boolean;
-    paymentAccountName: string | null;
-    paymentAccountId: number | null;
-    steps: string[];
-  };
   ledgerCredits: LedgerCredit[];
 };
 
@@ -222,26 +209,6 @@ export default function PurchaseReturnDetailPage() {
               </div>
             </section>
           </div>
-
-          <section className={`${INVENTORY_CARD_SHELL} border-primary/20 bg-primary/[0.04] p-5 sm:p-6`}>
-            <InventorySectionHeader
-              compact
-              icon={Info}
-              title="Accounting (what the server did)"
-              description="This matches the Nest purchase return transaction: stock, batch, supplier due, and optional account credit."
-            />
-            <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-foreground/90">
-              {data.accounting.steps.map((s) => (
-                <li key={s}>{s}</li>
-              ))}
-            </ul>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Implementation: <code className="rounded bg-muted px-1 py-0.5">backend/src/purchase/purchase.service.ts</code>{" "}
-              → <code className="rounded bg-muted px-1 py-0.5">createReturn</code>. Add payment / adjustment buttons for
-              other flows on the supplier or finance pages — this API does not expose seller-style return status or
-              refund modals yet.
-            </p>
-          </section>
 
           <section className={INVENTORY_CARD_SHELL}>
             <div className="border-b border-border/50 bg-muted/15 px-5 py-4 sm:px-6 sm:py-5">

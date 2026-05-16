@@ -131,9 +131,13 @@ function mapApiProductToStoreRows(
     }
     const batches = (sp.batches as Record<string, unknown>[]) || [];
     const firstBatch = batches[0] as { purchaseCost?: unknown } | undefined;
-    const purchaseCostPerUnit = firstBatch
-      ? Number(firstBatch.purchaseCost ?? 0)
-      : 0;
+    const movingAvg = Number(sp.averageCost ?? 0);
+    const purchaseCostPerUnit =
+      movingAvg > 0
+        ? movingAvg
+        : firstBatch
+          ? Number(firstBatch.purchaseCost ?? 0)
+          : 0;
     const hasSoldInAnyBatch = batches.some(
       (b) => Number((b as { soldQty?: unknown }).soldQty ?? 0) > 0
     );
