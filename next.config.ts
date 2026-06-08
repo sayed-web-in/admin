@@ -1,9 +1,13 @@
 import type { NextConfig } from "next";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+const apiUrl = process.env.NEXT_PUBLIC_API_URL?.split(",")[0]?.trim();
 const parsedApiUrl = (() => {
   if (!apiUrl) return null;
-  try { return new URL(apiUrl); } catch { return null; }
+  try {
+    return new URL(apiUrl);
+  } catch {
+    return null;
+  }
 })();
 
 const nextConfig: NextConfig = {

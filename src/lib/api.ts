@@ -1,9 +1,31 @@
-export function getApiUrl(): string {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
-  if (!apiUrl) {
-    throw new Error("NEXT_PUBLIC_API_URL is not set");
+function parseApiUrls(): string[] {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  if (!raw?.trim()) return [];
+
+  return raw
+    .split(",")
+    .map((url) => url.trim().replace(/\/$/, ""))
+    .filter((url) => {
+      if (!url) return false;
+      try {
+        new URL(url);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+}
+
+export function getApiUrls(): string[] {
+  const urls = parseApiUrls();
+  if (urls.length === 0) {
+    throw new Error("NEXT_PUBLIC_API_URL is not set or invalid");
   }
-  return apiUrl;
+  return urls;
+}
+
+export function getApiUrl(): string {
+  return getApiUrls()[0];
 }
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
