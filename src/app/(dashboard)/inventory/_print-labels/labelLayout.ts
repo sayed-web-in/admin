@@ -59,6 +59,78 @@ export function resolveLabelDimensions(settings: LabelSettings): LabelDimensions
   };
 }
 
+const MM_TO_PX = 3.7795275591;
+
+export interface QrLabelLayout {
+  qrSizePx: number;
+  qrSizeMm: number;
+  showScancodeText: boolean;
+  /** qrcodejs CorrectLevel numeric value (L=1, M=0, H=2). */
+  correctLevelJs: number;
+}
+
+function toQrJsCorrectLevel(level: number): number {
+  if (level === 0) return 1;
+  if (level === 2) return 2;
+  return 0;
+}
+
+export function getQrLabelLayout(
+  settings: LabelSettings,
+  context?: { storeName?: string; scancodeLength?: number }
+): QrLabelLayout {
+  const dims = resolveLabelDimensions(settings);
+  const scancodeLength = context?.scancodeLength ?? 0;
+
+  if (!dims.isThermal) {
+    return {
+      qrSizePx: 120,
+      qrSizeMm: 0,
+      showScancodeText: true,
+      correctLevelJs: 2,
+    };
+  }
+
+  let textLines = 0;
+  if (settings.showStoreName && context?.storeName) textLines++;
+  if (settings.showProductName) textLines++;
+  if (settings.showVariant) textLines++;
+  if (settings.showBatch) textLines++;
+  if (settings.showPrice) textLines++;
+
+  const h = dims.heightMm;
+  const w = dims.widthMm;
+  const lineMm = h <= 30 ? 2.3 : h <= 40 ? 2.6 : 3;
+  const paddingMm = 2;
+  const showScancodeText = h > 30;
+  const scancodeTextMm = showScancodeText ? (h <= 40 ? 2.5 : 3.5) : 0;
+  const usedHeightMm = paddingMm + textLines * lineMm + scancodeTextMm;
+  const qrByHeight = h - usedHeightMm;
+  const qrByWidth = w - 3;
+  let qrSizeMm = Math.min(qrByHeight, qrByWidth);
+  qrSizeMm = Math.max(12, Math.min(qrSizeMm, w - 2));
+
+  if (scancodeLength > 28 && h <= 30) {
+    qrSizeMm = Math.min(qrSizeMm, 15);
+  } else if (scancodeLength > 35) {
+    qrSizeMm = Math.min(qrSizeMm, Math.max(12, w - 6));
+  }
+
+  let correctLevel = 1;
+  if (scancodeLength > 36 || (scancodeLength > 24 && h <= 40)) {
+    correctLevel = 0;
+  } else if (scancodeLength < 18) {
+    correctLevel = 2;
+  }
+
+  return {
+    qrSizePx: Math.round(qrSizeMm * MM_TO_PX),
+    qrSizeMm: Math.round(qrSizeMm * 10) / 10,
+    showScancodeText,
+    correctLevelJs: toQrJsCorrectLevel(correctLevel),
+  };
+}
+
 export function getBarcodeRenderOptions(heightMm: number): BarcodeRenderOptions {
   if (heightMm <= 30) {
     return {
@@ -120,11 +192,17 @@ export function getBarcodeModuleWidth(
 
 export function buildLabelPrintStyles(
   settings: LabelSettings,
-  itemClass: string
+  itemClass: string,
+  layoutContext?: { storeName?: string }
 ): string {
   const dims = resolveLabelDimensions(settings);
   const render =
     dims.isThermal ? getBarcodeRenderOptions(dims.heightMm) : null;
+  const isQrItem = itemClass.includes("qrcode");
+  const qrLayout =
+    dims.isThermal && isQrItem
+      ? getQrLabelLayout(settings, { storeName: layoutContext?.storeName })
+      : null;
 
   if (dims.isThermal && render) {
     return `
@@ -197,8 +275,20 @@ export function buildLabelPrintStyles(
       .${itemClass} .qrcode-img {
         margin: 0 auto;
         padding: 0;
-        width: ${render.qrSize}px;
-        height: ${render.qrSize}px;
+        flex-shrink: 0;
+        width: ${qrLayout ? `${qrLayout.qrSizeMm}mm` : `${render.qrSize}px`};
+        height: ${qrLayout ? `${qrLayout.qrSizeMm}mm` : `${render.qrSize}px`};
+        max-width: calc(100% - 2mm);
+        max-height: calc(100% - 2mm);
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .${itemClass} .qrcode-img canvas,
+      .${itemClass} .qrcode-img img {
+        width: 100% !important;
+        height: 100% !important;
         display: block;
       }
       .${itemClass} .qrcode-text {
@@ -209,6 +299,7 @@ export function buildLabelPrintStyles(
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        flex-shrink: 0;
       }
       .${itemClass} .price {
         font-size: ${render.priceFont}px;
@@ -325,10 +416,9 @@ export function getJsBarcodeOptions(
   };
 }
 
-export function getQrRenderSize(settings: LabelSettings): number {
-  const dims = resolveLabelDimensions(settings);
-  if (dims.isThermal) {
-    return getBarcodeRenderOptions(dims.heightMm).qrSize;
-  }
-  return 120;
+export function getQrRenderSize(
+  settings: LabelSettings,
+  context?: { storeName?: string; scancodeLength?: number }
+): number {
+  return getQrLabelLayout(settings, context).qrSizePx;
 }

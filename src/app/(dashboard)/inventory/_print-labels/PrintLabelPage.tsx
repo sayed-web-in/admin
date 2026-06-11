@@ -30,12 +30,13 @@ import {
 import { INVENTORY_CARD_SHELL } from "@/components/inventory/InventoryCrudLayout";
 import { usePrintLabel } from "./usePrintLabel";
 import { buildLabelPreview } from "./preview";
+import { MAX_LABEL_CODE_LENGTH, normalizeLabelScancode } from "./scancode";
 import { printBarcodeSheet } from "./barcodePrint";
 import { printQrSheet } from "./qrPrint";
 import {
   getBarcodeRenderOptions,
   getJsBarcodeOptions,
-  getQrRenderSize,
+  getQrLabelLayout,
   resolveLabelDimensions,
   THERMAL_LABEL_PRESETS,
 } from "./labelLayout";
@@ -420,7 +421,6 @@ export function PrintLabelPage({
   }, [settings.showPrice, selectedBranchId, labelItems, refreshItemPrices]);
 
   const labelDims = useMemo(() => resolveLabelDimensions(settings), [settings]);
-  const previewQrSize = useMemo(() => getQrRenderSize(settings), [settings]);
   const previewRender = useMemo(
     () =>
       labelDims.isThermal ? getBarcodeRenderOptions(labelDims.heightMm) : null,
@@ -467,13 +467,17 @@ export function PrintLabelPage({
               el: HTMLElement,
               opts: Record<string, unknown>
             ) => void;
+            const itemLayout = getQrLabelLayout(settings, {
+              storeName: selectedStoreName,
+              scancodeLength: item.scancode.length,
+            });
             new QR(el, {
               text: item.scancode,
-              width: previewQrSize,
-              height: previewQrSize,
+              width: itemLayout.qrSizePx,
+              height: itemLayout.qrSizePx,
               colorDark: "#000000",
               colorLight: "#ffffff",
-              correctLevel: 2,
+              correctLevel: itemLayout.correctLevelJs,
             });
           } catch (err) {
             console.error(err);
@@ -482,7 +486,7 @@ export function PrintLabelPage({
       });
     }, 100);
     return () => window.clearTimeout(t);
-  }, [libLoaded, preview.items, kind, settings, previewQrSize]);
+  }, [libLoaded, preview.items, kind, settings, selectedStoreName]);
 
   const handleBranchChange = (branchId: string) => {
     setSelectedBranchId(branchId);
@@ -505,7 +509,9 @@ export function PrintLabelPage({
       const batches = (variantBatches[selectedVariantIdForPrint] || []) as ApiBatch[];
       const batch = batches.find((x) => x.id === batchId);
       if (!batch) return;
-      const code = String(batch.barcode || batch.batchNumber || "").trim();
+      const code = normalizeLabelScancode(
+        String(batch.barcode || batch.batchNumber || "")
+      );
       if (!code) {
         toast.error("This batch has no barcode / code to print");
         return;
@@ -860,6 +866,10 @@ export function PrintLabelPage({
             </div>
             <div className="space-y-3">
               <p className="text-sm font-medium">Display options</p>
+              <p className="text-xs text-muted-foreground">
+                Barcode / QR encodes up to {MAX_LABEL_CODE_LENGTH} characters from batch
+                barcode (or batch no).
+              </p>
               {(
                 [
                   ["showStoreName", "Show store name"],
@@ -1009,22 +1019,36 @@ export function PrintLabelPage({
                       <div
                         className="flex items-center justify-center bg-white"
                         style={{
-                          minHeight: previewRender
-                            ? `${previewRender.qrSize}px`
+                          minHeight: labelDims.isThermal
+                            ? `${getQrLabelLayout(settings, {
+                                storeName: selectedStoreName,
+                                scancodeLength: item.scancode.length,
+                              }).qrSizePx}px`
                             : "96px",
                         }}
                       >
                         <div
                           id={`qrcode-${index}`}
+                          className="overflow-hidden"
                           style={{
-                            width: previewQrSize,
-                            height: previewQrSize,
+                            width: getQrLabelLayout(settings, {
+                              storeName: selectedStoreName,
+                              scancodeLength: item.scancode.length,
+                            }).qrSizePx,
+                            height: getQrLabelLayout(settings, {
+                              storeName: selectedStoreName,
+                              scancodeLength: item.scancode.length,
+                            }).qrSizePx,
                           }}
                         />
                       </div>
                     )}
                   </div>
-                  {kind === "qrcode" ? (
+                  {kind === "qrcode" &&
+                  getQrLabelLayout(settings, {
+                    storeName: selectedStoreName,
+                    scancodeLength: item.scancode.length,
+                  }).showScancodeText ? (
                     <div
                       className="mt-0.5 font-mono text-neutral-800"
                       style={

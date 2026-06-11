@@ -1,11 +1,20 @@
-import { buildLabelPrintStyles, escapeHtml, getQrRenderSize } from "./labelLayout";
+import {
+  buildLabelPrintStyles,
+  escapeHtml,
+  getQrLabelLayout,
+} from "./labelLayout";
 import { printHtmlInFrame } from "./printFrame";
 import type { LabelPreview } from "./types";
 
 function generateQrCodeHTML(preview: LabelPreview): string {
   const { items, settings, storeName } = preview;
-  const qrSize = getQrRenderSize(settings);
-  const styles = buildLabelPrintStyles(settings, "qrcode-item");
+  const styles = buildLabelPrintStyles(settings, "qrcode-item", { storeName });
+  const qrLayouts = items.map((item) =>
+    getQrLabelLayout(settings, {
+      storeName,
+      scancodeLength: item.scancode.length,
+    })
+  );
 
   let html = `
     <!DOCTYPE html>
@@ -21,22 +30,23 @@ function generateQrCodeHTML(preview: LabelPreview): string {
   html += `
     <script>
       const items = ${JSON.stringify(items)};
-      const qrSize = ${qrSize};
+      const qrLayouts = ${JSON.stringify(qrLayouts)};
 
       function generateQRCodes() {
         if (window.QRCode) {
           items.forEach((item, index) => {
             const qrId = 'qrcode-' + index;
             const qrElement = document.getElementById(qrId);
+            const layout = qrLayouts[index] || qrLayouts[0] || { qrSizePx: 120, correctLevelJs: 2 };
             if (qrElement && !qrElement.querySelector('canvas')) {
               try {
                 new window.QRCode(qrElement, {
                   text: item.scancode,
-                  width: qrSize,
-                  height: qrSize,
+                  width: layout.qrSizePx,
+                  height: layout.qrSizePx,
                   colorDark: '#000000',
                   colorLight: '#ffffff',
-                  correctLevel: window.QRCode.CorrectLevel ? window.QRCode.CorrectLevel.H : 2
+                  correctLevel: layout.correctLevelJs ?? 2
                 });
               } catch (error) {
                 console.error('Error generating QR code:', error);
@@ -69,6 +79,7 @@ function generateQrCodeHTML(preview: LabelPreview): string {
   `;
 
   items.forEach((item, index) => {
+    const layout = qrLayouts[index];
     html += '<div class="qrcode-item">';
 
     if (settings.showStoreName && storeName) {
@@ -88,7 +99,10 @@ function generateQrCodeHTML(preview: LabelPreview): string {
     }
 
     html += `<div id="qrcode-${index}" class="qrcode-img"></div>`;
-    html += `<div class="qrcode-text">${escapeHtml(item.scancode)}</div>`;
+
+    if (layout?.showScancodeText) {
+      html += `<div class="qrcode-text">${escapeHtml(item.scancode)}</div>`;
+    }
 
     if (settings.showPrice && item.price != null) {
       html += `<div class="price">৳${Number(item.price).toFixed(2)}</div>`;

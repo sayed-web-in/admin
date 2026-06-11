@@ -11,6 +11,7 @@ import {
   resolveLegacyStoreProductId,
   type LegacyBatchRow,
 } from "./legacyBatches";
+import { normalizeLabelScancode } from "./scancode";
 
 type ApiBatch = {
   id: string;
@@ -157,7 +158,9 @@ export function usePrintLabel() {
       batch.variantId,
       branchId
     );
-    const scancode = String(batch.barcode || batch.batchNumber || "").trim();
+    const scancode = normalizeLabelScancode(
+      String(batch.barcode || batch.batchNumber || "")
+    );
     const newItem: LabelItem = {
       id: batch.id,
       batchId: batch.id,
