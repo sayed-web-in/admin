@@ -23,26 +23,58 @@ type ApiBatch = {
   variant?: { sku?: string };
 };
 
+type PriceListItem = {
+  productId?: string;
+  variantId?: string;
+  branchId?: string;
+  sellingPrice?: unknown;
+};
+
+function priceListRowMatches(
+  row: PriceListItem,
+  productId: string,
+  variantId: string,
+  branchId: string
+): boolean {
+  if (String(row.branchId ?? "") !== String(branchId)) return false;
+  if (String(row.productId ?? "") !== String(productId)) return false;
+  const rowVariant = String(row.variantId ?? "");
+  const wantVariant = String(variantId);
+  if (rowVariant === wantVariant) return true;
+  // Single-product rows in price list use variantId "0".
+  return rowVariant === "0";
+}
+
 async function fetchSellingPrice(
+  productId: string,
   variantId: string,
   branchId: string
 ): Promise<number | undefined> {
   if (!isUsableEntityId(variantId) || !isUsableEntityId(branchId)) return undefined;
+  if (!isUsableEntityId(productId)) return undefined;
   try {
-    const pricesData = await apiFetch<unknown>(
-      `/product-prices?variantId=${encodeURIComponent(variantId)}&branchId=${encodeURIComponent(branchId)}`
-    );
-    const prices = parseApiList<{
-      variantId?: string;
-      branchId?: string;
-      sellingPrice?: unknown;
-    }>(pricesData);
-    const row =
-      prices.find((p) => p.variantId === variantId && p.branchId === branchId) ||
-      prices.find((p) => p.variantId === variantId);
-    if (row && row.sellingPrice != null) {
-      const n = Number(row.sellingPrice);
-      return Number.isFinite(n) ? n : undefined;
+    let page = 1;
+    let totalPages = 1;
+    while (page <= totalPages && page <= 50) {
+      const qs = new URLSearchParams({
+        branchId: String(branchId),
+        page: String(page),
+        limit: "100",
+      });
+      const res = await apiFetch<{
+        items?: PriceListItem[];
+        totalPages?: number;
+      }>(`/products/price-list?${qs.toString()}`);
+      const items = Array.isArray(res.items) ? res.items : [];
+      const row = items.find((p) =>
+        priceListRowMatches(p, productId, variantId, branchId)
+      );
+      if (row?.sellingPrice != null) {
+        const n = Number(row.sellingPrice);
+        if (Number.isFinite(n)) return n;
+      }
+      totalPages = Math.max(1, Number(res.totalPages) || 1);
+      page += 1;
     }
   } catch {
     /* ignore */
@@ -57,7 +89,9 @@ export function usePrintLabel() {
   const [variantBatches, setVariantBatches] = useState<Record<string, ApiBatch[]>>({});
   const [labelItems, setLabelItems] = useState<LabelItem[]>([]);
   const [settings, setSettings] = useState<LabelSettings>({
+    printMode: "thermal",
     paperSize: "A4",
+    thermalSize: "50x30",
     showStoreName: true,
     showBatch: true,
     showProductName: true,
@@ -118,7 +152,11 @@ export function usePrintLabel() {
 
   const addBatchToItems = useCallback(async (batch: ApiBatch, branchId: string) => {
     if (!isUsableEntityId(branchId) || !isUsableEntityId(batch.variantId)) return;
-    const sellingPrice = await fetchSellingPrice(batch.variantId, branchId);
+    const sellingPrice = await fetchSellingPrice(
+      batch.productId,
+      batch.variantId,
+      branchId
+    );
     const scancode = String(batch.barcode || batch.batchNumber || "").trim();
     const newItem: LabelItem = {
       id: batch.id,
@@ -168,13 +206,38 @@ export function usePrintLabel() {
     setLabelItems((prev) => prev.filter((item) => item.id !== itemId));
   }, []);
 
+  const refreshItemPrices = useCallback(async (branchId: string) => {
+    if (!isUsableEntityId(branchId)) return;
+    setLabelItems((prev) => {
+      if (prev.length === 0) return prev;
+      void (async () => {
+        const updated = await Promise.all(
+          prev.map(async (item) => {
+            if (item.price != null) return item;
+            const price = await fetchSellingPrice(
+              item.productId,
+              item.variantId,
+              branchId
+            );
+            return price != null ? { ...item, price } : item;
+          })
+        );
+        const changed = updated.some((item, index) => item.price !== prev[index]?.price);
+        if (changed) setLabelItems(updated);
+      })();
+      return prev;
+    });
+  }, []);
+
   const reset = useCallback(() => {
     setSelectedProductId("");
     setSelectedVariantId("");
     setVariantBatches({});
     setLabelItems([]);
     setSettings({
+      printMode: "thermal",
       paperSize: "A4",
+      thermalSize: "50x30",
       showStoreName: true,
       showBatch: true,
       showProductName: true,
@@ -202,6 +265,7 @@ export function usePrintLabel() {
     updateItemQuantity,
     selectAllItems,
     removeItem,
+    refreshItemPrices,
     reset,
   };
 }

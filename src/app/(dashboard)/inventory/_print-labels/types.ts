@@ -15,10 +15,19 @@ export interface LabelItem {
   selected: boolean;
 }
 
-export type LabelPaperSize = "A4" | "A5" | "Letter" | "Custom";
+export type PrintMode = "sheet" | "thermal";
+
+export type SheetPaperSize = "A4" | "A5" | "Letter";
+
+export type ThermalLabelSize = "40x30" | "50x30" | "60x40" | "76x50";
+
+/** @deprecated Use SheetPaperSize */
+export type LabelPaperSize = SheetPaperSize | "Custom";
 
 export interface LabelSettings {
-  paperSize: LabelPaperSize;
+  printMode: PrintMode;
+  paperSize: SheetPaperSize;
+  thermalSize: ThermalLabelSize;
   showStoreName: boolean;
   showBatch: boolean;
   showProductName: boolean;

@@ -1,15 +1,43 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
-import { setAdminAuth } from "@/lib/auth";
+import { getAdminToken, setAdminAuth, validateAdminSession } from "@/lib/auth";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      if (!getAdminToken()) {
+        if (!cancelled) setCheckingSession(false);
+        return;
+      }
+
+      const status = await validateAdminSession();
+      if (cancelled) return;
+
+      if (status === "ok") {
+        router.replace("/");
+        return;
+      }
+
+      setCheckingSession(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,12 +50,28 @@ export default function LoginPage() {
       });
       setAdminAuth(res.access_token, res.user);
       window.location.href = "/";
-    } catch (err: any) {
-      setError(err.message || "Login failed");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Login failed";
+      setError(
+        message === "Failed to fetch"
+          ? "Cannot connect to server. Check API URL or start the backend."
+          : message
+      );
     } finally {
       setLoading(false);
     }
   };
+
+  if (checkingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/30">
+        <div
+          className="size-10 animate-spin rounded-full border-2 border-primary border-t-transparent"
+          aria-label="Checking session"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30 px-3 py-3 sm:px-4">

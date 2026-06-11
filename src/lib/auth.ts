@@ -1,5 +1,7 @@
 "use client";
 
+import { getApiUrl } from "@/lib/api";
+
 export interface AdminUser {
   id: number;
   name: string;
@@ -42,4 +44,42 @@ export function getSelectedBranch(): number | null {
 export function setSelectedBranch(branchId: number) {
   localStorage.setItem("selected_branch", String(branchId));
   window.dispatchEvent(new Event("branch-changed"));
+}
+
+export type AdminSessionStatus = "ok" | "unauthorized" | "unreachable";
+
+/** Verifies token with backend; does not redirect — caller decides. */
+export async function validateAdminSession(): Promise<AdminSessionStatus> {
+  const token = getAdminToken();
+  if (!token) return "unauthorized";
+
+  let apiUrl: string;
+  try {
+    apiUrl = getApiUrl();
+  } catch {
+    return "unreachable";
+  }
+
+  try {
+    const res = await fetch(`${apiUrl}/auth/profile`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      clearAdminAuth();
+      return "unauthorized";
+    }
+
+    if (!res.ok) {
+      return "unreachable";
+    }
+
+    return "ok";
+  } catch {
+    return "unreachable";
+  }
 }

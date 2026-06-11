@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AdminAuthGuard } from "@/components/auth/AdminAuthGuard";
 import { cn } from "@/lib/utils";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { AdminHeader } from "@/components/layout/Header";
@@ -45,7 +46,7 @@ export function DashboardShell({
   }, [mobileOpen]);
 
   return (
-    <>
+    <AdminAuthGuard>
       <Sidebar
         collapsed={hydrated && collapsed}
         onToggleCollapse={toggleCollapsed}
@@ -64,6 +65,6 @@ export function DashboardShell({
           {children}
         </main>
       </div>
-    </>
+    </AdminAuthGuard>
   );
 }

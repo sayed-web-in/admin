@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Barcode,
@@ -32,7 +32,20 @@ import { usePrintLabel } from "./usePrintLabel";
 import { buildLabelPreview } from "./preview";
 import { printBarcodeSheet } from "./barcodePrint";
 import { printQrSheet } from "./qrPrint";
-import type { LabelItem, LabelPaperSize, PrintLabelKind } from "./types";
+import {
+  getBarcodeRenderOptions,
+  getJsBarcodeOptions,
+  getQrRenderSize,
+  resolveLabelDimensions,
+  THERMAL_LABEL_PRESETS,
+} from "./labelLayout";
+import type {
+  LabelItem,
+  PrintLabelKind,
+  PrintMode,
+  SheetPaperSize,
+  ThermalLabelSize,
+} from "./types";
 import { isUsableEntityId } from "./entityIds";
 
 declare global {
@@ -207,6 +220,7 @@ export function PrintLabelPage({
     updateItemQuantity,
     selectAllItems,
     removeItem,
+    refreshItemPrices,
     reset,
   } = usePrintLabel();
 
@@ -394,6 +408,25 @@ export function PrintLabelPage({
     [kind, labelItems, settings, selectedStoreName]
   );
 
+  const priceRefreshKeyRef = useRef("");
+
+  useEffect(() => {
+    if (!settings.showPrice || !isUsableEntityId(selectedBranchId)) return;
+    if (!labelItems.some((item) => item.price == null)) return;
+    const refreshKey = `${selectedBranchId}:${labelItems.map((item) => item.batchId).join(",")}`;
+    if (priceRefreshKeyRef.current === refreshKey) return;
+    priceRefreshKeyRef.current = refreshKey;
+    void refreshItemPrices(selectedBranchId);
+  }, [settings.showPrice, selectedBranchId, labelItems, refreshItemPrices]);
+
+  const labelDims = useMemo(() => resolveLabelDimensions(settings), [settings]);
+  const previewQrSize = useMemo(() => getQrRenderSize(settings), [settings]);
+  const previewRender = useMemo(
+    () =>
+      labelDims.isThermal ? getBarcodeRenderOptions(labelDims.heightMm) : null,
+    [labelDims]
+  );
+
   useEffect(() => {
     if (!libLoaded || preview.items.length === 0) return;
 
@@ -408,13 +441,7 @@ export function PrintLabelPage({
           if (svg && window.JsBarcode) {
             try {
               window.JsBarcode(svg, item.scancode, {
-                format: "CODE128",
-                width: 2,
-                height: 70,
-                displayValue: true,
-                fontSize: 14,
-                textMargin: 3,
-                font: "Arial",
+                ...getJsBarcodeOptions(settings, item.scancode),
                 lineColor: "#000000",
                 background: "#ffffff",
               });
@@ -442,8 +469,8 @@ export function PrintLabelPage({
             ) => void;
             new QR(el, {
               text: item.scancode,
-              width: 120,
-              height: 120,
+              width: previewQrSize,
+              height: previewQrSize,
               colorDark: "#000000",
               colorLight: "#ffffff",
               correctLevel: 2,
@@ -455,7 +482,7 @@ export function PrintLabelPage({
       });
     }, 100);
     return () => window.clearTimeout(t);
-  }, [libLoaded, preview.items, kind]);
+  }, [libLoaded, preview.items, kind, settings, previewQrSize]);
 
   const handleBranchChange = (branchId: string) => {
     setSelectedBranchId(branchId);
@@ -779,20 +806,57 @@ export function PrintLabelPage({
       {labelItems.length > 0 && (
         <div className={cn(INVENTORY_CARD_SHELL, "p-5 sm:p-6 md:p-7")}>
           <div className="grid gap-6 md:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-sm font-medium">Paper size</label>
-              <select
-                className={selectClasses}
-                value={settings.paperSize}
-                onChange={(e) =>
-                  updateSettings({ paperSize: e.target.value as LabelPaperSize })
-                }
-              >
-                <option value="A4">A4</option>
-                <option value="A5">A5</option>
-                <option value="Letter">Letter</option>
-                <option value="Custom">Custom</option>
-              </select>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium">Print mode</label>
+                <select
+                  className={selectClasses}
+                  value={settings.printMode}
+                  onChange={(e) =>
+                    updateSettings({ printMode: e.target.value as PrintMode })
+                  }
+                >
+                  <option value="thermal">Thermal label (GP-3120TUC)</option>
+                  <option value="sheet">Sheet paper (A4 / A5)</option>
+                </select>
+              </div>
+              {settings.printMode === "thermal" ? (
+                <div>
+                  <label className="mb-2 block text-sm font-medium">Label size</label>
+                  <select
+                    className={selectClasses}
+                    value={settings.thermalSize}
+                    onChange={(e) =>
+                      updateSettings({ thermalSize: e.target.value as ThermalLabelSize })
+                    }
+                  >
+                    {THERMAL_LABEL_PRESETS.map((preset) => (
+                      <option key={preset.value} value={preset.value}>
+                        {preset.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Install Gprinter driver, match sticker roll size, set margins to 0 in
+                    printer properties, then print.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="mb-2 block text-sm font-medium">Paper size</label>
+                  <select
+                    className={selectClasses}
+                    value={settings.paperSize}
+                    onChange={(e) =>
+                      updateSettings({ paperSize: e.target.value as SheetPaperSize })
+                    }
+                  >
+                    <option value="A4">A4</option>
+                    <option value="A5">A5</option>
+                    <option value="Letter">Letter</option>
+                  </select>
+                </div>
+              )}
             </div>
             <div className="space-y-3">
               <p className="text-sm font-medium">Display options</p>
@@ -854,38 +918,135 @@ export function PrintLabelPage({
         <div className={cn(INVENTORY_CARD_SHELL, "p-5 sm:p-6 md:p-7")}>
           <h2 className="mb-4 text-lg font-semibold">Preview</h2>
           <div className="rounded-xl border border-border bg-white p-4 text-black dark:bg-white">
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div
+              className={
+                labelDims.isThermal
+                  ? "flex flex-wrap gap-4"
+                  : "grid grid-cols-2 gap-4 md:grid-cols-4"
+              }
+            >
               {preview.items.slice(0, 8).map((item, index) => (
                 <div
                   key={item.id}
-                  className="border border-neutral-300 bg-white p-3 text-center text-black"
+                  className="border border-neutral-300 bg-white text-center text-black"
+                  style={
+                    labelDims.isThermal
+                      ? {
+                          width: `${labelDims.widthMm * 3}px`,
+                          minHeight: `${labelDims.heightMm * 3}px`,
+                          padding: "6px 8px",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          lineHeight: 1.1,
+                        }
+                      : { padding: "12px" }
+                  }
                 >
                   {settings.showStoreName && selectedStoreName ? (
-                    <div className="mb-0.5 text-xs">{selectedStoreName}</div>
+                    <div
+                      className="mb-0.5"
+                      style={
+                        previewRender
+                          ? { fontSize: `${previewRender.storeFont}px` }
+                          : { fontSize: "12px" }
+                      }
+                    >
+                      {selectedStoreName}
+                    </div>
                   ) : null}
                   {settings.showProductName ? (
-                    <div className="mb-0.5 text-sm font-bold">{item.productName}</div>
+                    <div
+                      className="mb-0.5 font-bold"
+                      style={
+                        previewRender
+                          ? { fontSize: `${previewRender.productFont}px` }
+                          : { fontSize: "14px" }
+                      }
+                    >
+                      {item.productName}
+                    </div>
                   ) : null}
                   {settings.showVariant && item.variant ? (
-                    <div className="mb-0.5 text-xs text-neutral-700">{item.variant}</div>
+                    <div
+                      className="mb-0.5 text-neutral-700"
+                      style={
+                        previewRender
+                          ? { fontSize: `${previewRender.metaFont}px` }
+                          : { fontSize: "12px" }
+                      }
+                    >
+                      {item.variant}
+                    </div>
                   ) : null}
                   {settings.showBatch ? (
-                    <div className="mb-0.5 text-xs text-neutral-700">Batch: {item.batchNumber}</div>
+                    <div
+                      className="mb-0.5 text-neutral-700"
+                      style={
+                        previewRender
+                          ? { fontSize: `${previewRender.metaFont}px` }
+                          : { fontSize: "12px" }
+                      }
+                    >
+                      Batch: {item.batchNumber}
+                    </div>
                   ) : null}
-                  <div className="barcode-svg-wrap my-0 min-h-[96px] bg-white">
+                  <div className="barcode-svg-wrap my-0 w-full bg-white">
                     {kind === "barcode" ? (
-                      <svg id={`barcode-${index}`} className="h-24 w-full" />
+                      <svg
+                        id={`barcode-${index}`}
+                        className="mx-auto block max-w-full"
+                        style={{
+                          width: "auto",
+                          height: "auto",
+                          maxHeight: previewRender
+                            ? `${previewRender.height + 14}px`
+                            : "96px",
+                        }}
+                      />
                     ) : (
-                      <div className="flex min-h-[96px] items-center justify-center bg-white">
-                        <div id={`qrcode-${index}`} className="size-28" />
+                      <div
+                        className="flex items-center justify-center bg-white"
+                        style={{
+                          minHeight: previewRender
+                            ? `${previewRender.qrSize}px`
+                            : "96px",
+                        }}
+                      >
+                        <div
+                          id={`qrcode-${index}`}
+                          style={{
+                            width: previewQrSize,
+                            height: previewQrSize,
+                          }}
+                        />
                       </div>
                     )}
                   </div>
                   {kind === "qrcode" ? (
-                    <div className="mt-0.5 font-mono text-[10px] text-neutral-800">{item.scancode}</div>
+                    <div
+                      className="mt-0.5 font-mono text-neutral-800"
+                      style={
+                        previewRender
+                          ? { fontSize: `${Math.max(5, previewRender.metaFont - 1)}px` }
+                          : { fontSize: "10px" }
+                      }
+                    >
+                      {item.scancode}
+                    </div>
                   ) : null}
                   {settings.showPrice && item.price != null ? (
-                    <div className="text-xs font-semibold">{formatAmountDecimal(item.price)}</div>
+                    <div
+                      className="font-semibold"
+                      style={
+                        previewRender
+                          ? { fontSize: `${previewRender.priceFont}px` }
+                          : { fontSize: "12px" }
+                      }
+                    >
+                      {formatAmountDecimal(item.price)}
+                    </div>
                   ) : null}
                 </div>
               ))}
