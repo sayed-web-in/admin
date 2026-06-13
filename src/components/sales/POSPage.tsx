@@ -51,7 +51,8 @@ export function POSPage() {
   const fetchProducts = useCallback(async () => {
     const params = new URLSearchParams();
     if (branchId) params.set("branchId", String(branchId));
-    if (selectedCategory) params.set("categoryId", String(selectedCategory));
+    // SKU/IMEI search should not be narrowed by sidebar category (seller-admin POS pattern).
+    if (selectedCategory && !search.trim()) params.set("categoryId", String(selectedCategory));
     if (search) params.set("search", search);
     params.set("limit", "50");
     const res = await apiFetch<any>(`/products?${params}`).catch(() => ({ data: [] }));
@@ -98,7 +99,10 @@ export function POSPage() {
       : product.storeProducts?.[0];
     if (!sp) return;
     const stockAvailable = Number(sp.quantity || 0);
-    if (stockAvailable <= 0) return;
+    if (stockAvailable <= 0) {
+      toast.error("Out of stock");
+      return;
+    }
     const discountType = String(sp.discountType || "").toLowerCase();
     const discountValue = Number(sp.discountValue || 0);
     let effectiveUnitPrice = Number(sp.sellingPrice || 0);
@@ -493,6 +497,7 @@ export function POSPage() {
             products={products}
             cart={cart}
             search={search}
+            branchId={branchId}
             onSearchChange={setSearch}
             onAddToCart={addToCart}
           />

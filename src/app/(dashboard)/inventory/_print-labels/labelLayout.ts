@@ -8,7 +8,8 @@ export const THERMAL_LABEL_PRESETS: ReadonlyArray<{
 }> = [
   { value: "40x30", label: "40 × 30 mm", widthMm: 40, heightMm: 30 },
   { value: "50x30", label: "50 × 30 mm", widthMm: 50, heightMm: 30 },
-  { value: "60x40", label: "60 × 40 mm", widthMm: 60, heightMm: 40 },
+  { value: "55x35", label: "55 × 35 mm", widthMm: 55, heightMm: 35 },
+  { value: "60x40", label: "60 × 40 mm (recommended)", widthMm: 60, heightMm: 40 },
   { value: "76x50", label: "76 × 50 mm (GP-3120TUC max)", widthMm: 76, heightMm: 50 },
 ];
 
@@ -29,6 +30,12 @@ export interface BarcodeRenderOptions {
   metaFont: number;
   priceFont: number;
   qrSize: number;
+  /** Even vertical gap between text rows on thermal labels (mm). */
+  lineGapMm: number;
+  /** Space above barcode block (mm). */
+  barcodeGapMm: number;
+  /** Extra space above price row (mm). */
+  priceGapMm: number;
 }
 
 export function escapeHtml(value: string): string {
@@ -43,7 +50,8 @@ export function resolveLabelDimensions(settings: LabelSettings): LabelDimensions
   if (settings.printMode === "thermal") {
     const preset =
       THERMAL_LABEL_PRESETS.find((p) => p.value === settings.thermalSize) ??
-      THERMAL_LABEL_PRESETS[1];
+      THERMAL_LABEL_PRESETS.find((p) => p.value === "60x40") ??
+      THERMAL_LABEL_PRESETS[0];
     return {
       isThermal: true,
       widthMm: preset.widthMm,
@@ -134,44 +142,69 @@ export function getQrLabelLayout(
 export function getBarcodeRenderOptions(heightMm: number): BarcodeRenderOptions {
   if (heightMm <= 30) {
     return {
-      height: 20,
-      width: 0.8,
+      height: 22,
+      width: 1.15,
       fontSize: 7,
       textMargin: 1,
-      storeFont: 6,
+      storeFont: 8,
       productFont: 7,
       metaFont: 6,
-      priceFont: 7,
-      qrSize: 28,
+      priceFont: 8,
+      qrSize: 30,
+      lineGapMm: 0.35,
+      barcodeGapMm: 0.25,
+      priceGapMm: 0.45,
+    };
+  }
+  if (heightMm <= 35) {
+    return {
+      height: 30,
+      width: 1.28,
+      fontSize: 8,
+      textMargin: 1,
+      storeFont: 9,
+      productFont: 8,
+      metaFont: 7,
+      priceFont: 9,
+      qrSize: 44,
+      lineGapMm: 0.4,
+      barcodeGapMm: 0.3,
+      priceGapMm: 0.5,
     };
   }
   if (heightMm <= 40) {
     return {
-      height: 32,
-      width: 1,
+      height: 34,
+      width: 1.42,
       fontSize: 9,
       textMargin: 2,
-      storeFont: 7,
+      storeFont: 10,
       productFont: 8,
       metaFont: 7,
-      priceFont: 8,
-      qrSize: 48,
+      priceFont: 9,
+      qrSize: 50,
+      lineGapMm: 0.45,
+      barcodeGapMm: 0.35,
+      priceGapMm: 0.55,
     };
   }
   return {
-    height: 45,
-    width: 1.2,
+    height: 48,
+    width: 1.55,
     fontSize: 11,
     textMargin: 2,
-    storeFont: 8,
+    storeFont: 12,
     productFont: 10,
     metaFont: 8,
-    priceFont: 10,
-    qrSize: 72,
+    priceFont: 11,
+    qrSize: 74,
+    lineGapMm: 0.5,
+    barcodeGapMm: 0.4,
+    priceGapMm: 0.6,
   };
 }
 
-/** Thinner module width for long codes so bars stay scannable on thermal labels. */
+/** Module width for JsBarcode (wider bars; thermal codes are max 7 chars). */
 export function getBarcodeModuleWidth(
   settings: LabelSettings,
   scancodeLength: number
@@ -179,14 +212,11 @@ export function getBarcodeModuleWidth(
   const dims = resolveLabelDimensions(settings);
   const base = dims.isThermal
     ? getBarcodeRenderOptions(dims.heightMm).width
-    : 1.2;
+    : 1.6;
   if (!dims.isThermal) {
-    if (scancodeLength > 18) return Math.max(0.9, base * 0.75);
-    if (scancodeLength > 14) return Math.max(1, base * 0.9);
+    if (scancodeLength > 14) return Math.max(1.15, base * 0.92);
     return base;
   }
-  if (scancodeLength > 22) return Math.max(0.55, base * 0.7);
-  if (scancodeLength > 16) return Math.max(0.65, base * 0.85);
   return base;
 }
 
@@ -223,7 +253,7 @@ export function buildLabelPrintStyles(
       .${itemClass} {
         width: ${dims.widthMm}mm;
         height: ${dims.heightMm}mm;
-        padding: 1mm 1.5mm;
+        padding: 1.2mm 1.5mm 1mm;
         overflow: hidden;
         text-align: center;
         page-break-after: always;
@@ -231,46 +261,57 @@ export function buildLabelPrintStyles(
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
-        line-height: 1.1;
+        justify-content: flex-start;
+        gap: ${render.lineGapMm}mm;
+        line-height: 1.15;
       }
       .${itemClass}:last-child {
         page-break-after: auto;
       }
       .${itemClass} .store-name {
         font-size: ${render.storeFont}px;
+        font-weight: 700;
         color: #000;
         max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        flex-shrink: 0;
+        margin: 0;
+        letter-spacing: 0.02em;
       }
       .${itemClass} .product-name {
         font-size: ${render.productFont}px;
-        font-weight: bold;
+        font-weight: 700;
         color: #000;
         max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        flex-shrink: 0;
+        margin: 0;
       }
       .${itemClass} .variant,
       .${itemClass} .batch {
         font-size: ${render.metaFont}px;
-        color: #374151;
+        color: #111;
         max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        flex-shrink: 0;
+        margin: 0;
+        line-height: 1.2;
       }
       .${itemClass} .barcode-svg {
-        margin: 0 auto;
+        margin: ${render.barcodeGapMm}mm auto 0;
         padding: 0;
-        width: auto;
+        width: 100%;
         max-width: 100%;
         height: auto;
         max-height: ${render.height + 14}px;
         display: block;
+        flex-shrink: 0;
       }
       .${itemClass} .qrcode-img {
         margin: 0 auto;
@@ -304,7 +345,11 @@ export function buildLabelPrintStyles(
       .${itemClass} .price {
         font-size: ${render.priceFont}px;
         color: #000;
-        font-weight: bold;
+        font-weight: 800;
+        flex-shrink: 0;
+        margin: ${render.priceGapMm}mm 0 0;
+        line-height: 1.2;
+        letter-spacing: 0.02em;
       }
       @media print {
         body { margin: 0; padding: 0; }
@@ -399,9 +444,9 @@ export function getJsBarcodeOptions(
       fontSize: opts.fontSize,
       textMargin: opts.textMargin,
       font: "Arial",
-      margin: 2,
-      marginTop: 1,
-      marginBottom: 1,
+      margin: 1,
+      marginTop: 0,
+      marginBottom: 0,
     };
   }
   return {

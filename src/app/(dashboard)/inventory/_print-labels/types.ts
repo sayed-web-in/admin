@@ -19,7 +19,7 @@ export type PrintMode = "sheet" | "thermal";
 
 export type SheetPaperSize = "A4" | "A5" | "Letter";
 
-export type ThermalLabelSize = "40x30" | "50x30" | "60x40" | "76x50";
+export type ThermalLabelSize = "40x30" | "50x30" | "55x35" | "60x40" | "76x50";
 
 /** @deprecated Use SheetPaperSize */
 export type LabelPaperSize = SheetPaperSize | "Custom";

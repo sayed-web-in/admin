@@ -1,6 +1,6 @@
-export const MAX_LABEL_CODE_LENGTH = 12;
+export const MAX_LABEL_CODE_LENGTH = 7;
 
-/** Code encoded in barcode / QR labels (max 12 characters). */
+/** Code encoded in barcode / QR labels (max 7 characters). */
 export function normalizeLabelScancode(raw: string): string {
   const value = String(raw ?? "").trim();
   if (!value) return "";

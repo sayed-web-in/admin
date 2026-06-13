@@ -516,10 +516,16 @@ export function PrintLabelPage({
         toast.error("This batch has no barcode / code to print");
         return;
       }
-      await addBatchToItems(batch as never, selectedBranchId);
+      const variant = productVariants.find(
+        (v) => String(v.id) === selectedVariantIdForPrint
+      );
+      await addBatchToItems(batch as never, selectedBranchId, {
+        productName: selectedProduct?.name || "",
+        variantLabel: variant ? formatVariantDisplay(variant) : "",
+      });
       setBatchComboNonce((n) => n + 1);
     },
-    [variantBatches, selectedBranchId, addBatchToItems, selectedVariantIdForPrint]
+    [variantBatches, selectedBranchId, addBatchToItems, selectedVariantIdForPrint, selectedProduct, productVariants]
   );
 
   const handlePrint = () => {
@@ -948,31 +954,37 @@ export function PrintLabelPage({
                           display: "flex",
                           flexDirection: "column",
                           alignItems: "center",
-                          justifyContent: "center",
-                          lineHeight: 1.1,
+                          justifyContent: "flex-start",
+                          lineHeight: 1.15,
                         }
                       : { padding: "12px" }
                   }
                 >
                   {settings.showStoreName && selectedStoreName ? (
                     <div
-                      className="mb-0.5"
+                      className="font-bold"
                       style={
                         previewRender
-                          ? { fontSize: `${previewRender.storeFont}px` }
-                          : { fontSize: "12px" }
+                          ? {
+                              fontSize: `${previewRender.storeFont}px`,
+                              marginBottom: `${previewRender.lineGapMm * 3}px`,
+                            }
+                          : { fontSize: "13px", marginBottom: "3px" }
                       }
                     >
                       {selectedStoreName}
                     </div>
                   ) : null}
-                  {settings.showProductName ? (
+                  {settings.showProductName && item.productName ? (
                     <div
-                      className="mb-0.5 font-bold"
+                      className="font-bold"
                       style={
                         previewRender
-                          ? { fontSize: `${previewRender.productFont}px` }
-                          : { fontSize: "14px" }
+                          ? {
+                              fontSize: `${previewRender.productFont}px`,
+                              marginBottom: `${previewRender.lineGapMm * 3}px`,
+                            }
+                          : { fontSize: "14px", marginBottom: "3px" }
                       }
                     >
                       {item.productName}
@@ -980,11 +992,14 @@ export function PrintLabelPage({
                   ) : null}
                   {settings.showVariant && item.variant ? (
                     <div
-                      className="mb-0.5 text-neutral-700"
+                      className="text-neutral-700"
                       style={
                         previewRender
-                          ? { fontSize: `${previewRender.metaFont}px` }
-                          : { fontSize: "12px" }
+                          ? {
+                              fontSize: `${previewRender.metaFont}px`,
+                              marginBottom: `${previewRender.lineGapMm * 3}px`,
+                            }
+                          : { fontSize: "12px", marginBottom: "3px" }
                       }
                     >
                       {item.variant}
@@ -992,11 +1007,14 @@ export function PrintLabelPage({
                   ) : null}
                   {settings.showBatch ? (
                     <div
-                      className="mb-0.5 text-neutral-700"
+                      className="text-neutral-700"
                       style={
                         previewRender
-                          ? { fontSize: `${previewRender.metaFont}px` }
-                          : { fontSize: "12px" }
+                          ? {
+                              fontSize: `${previewRender.metaFont}px`,
+                              marginBottom: `${previewRender.barcodeGapMm * 3}px`,
+                            }
+                          : { fontSize: "12px", marginBottom: "4px" }
                       }
                     >
                       Batch: {item.batchNumber}
@@ -1062,11 +1080,14 @@ export function PrintLabelPage({
                   ) : null}
                   {settings.showPrice && item.price != null ? (
                     <div
-                      className="font-semibold"
+                      className="font-extrabold"
                       style={
                         previewRender
-                          ? { fontSize: `${previewRender.priceFont}px` }
-                          : { fontSize: "12px" }
+                          ? {
+                              fontSize: `${previewRender.priceFont}px`,
+                              marginTop: `${previewRender.priceGapMm * 3}px`,
+                            }
+                          : { fontSize: "13px", marginTop: "5px" }
                       }
                     >
                       {formatAmountDecimal(item.price)}

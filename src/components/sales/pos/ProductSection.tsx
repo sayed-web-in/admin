@@ -12,6 +12,7 @@ interface ProductSectionProps {
   products: POSProduct[];
   cart: { storeProductId: number; serialNumbers?: string[] }[];
   search: string;
+  branchId?: number | null;
   onSearchChange: (value: string) => void;
   onAddToCart: (
     product: POSProduct,
@@ -29,6 +30,7 @@ export function ProductSection({
   products,
   cart,
   search,
+  branchId,
   onSearchChange,
   onAddToCart,
 }: ProductSectionProps) {
@@ -55,6 +57,21 @@ export function ProductSection({
       ?.map((a) => a?.attributeValue?.value)
       .filter((v): v is string => Boolean(v && v.trim()))
       .join(" + ") || "";
+
+  const findExactSkuMatches = (
+    list: POSProduct[],
+    exact: string
+  ): Array<{ product: POSProduct; storeProduct: POSProduct["storeProducts"][number] }> => {
+    const rows = list.flatMap((product) =>
+      (product.storeProducts || []).map((storeProduct) => ({ product, storeProduct }))
+    );
+    return rows.filter(({ product, storeProduct }) => {
+      if (product.hasImei) return false;
+      const variantSku = String(storeProduct.productVariant?.sku || "").toLowerCase();
+      const productSku = String(product.sku || "").toLowerCase();
+      return variantSku === exact || productSku === exact;
+    });
+  };
 
   const tryAddByEnter = async () => {
     const query = search.trim();
@@ -93,12 +110,30 @@ export function ProductSection({
       // Ignore and continue to SKU fallback
     }
 
-    // 2) Exact SKU match for non-IMEI flow
-    const skuMatches = cardRows.filter(({ product, storeProduct }) => {
-      const variantSku = String(storeProduct.productVariant?.sku || "").toLowerCase();
-      const productSku = String(product.sku || "").toLowerCase();
-      return variantSku === exact || productSku === exact;
-    });
+    // 2) Exact SKU match in currently loaded products (non-IMEI only)
+    let skuMatches = findExactSkuMatches(products, exact);
+
+    // 3) API fallback: Enter should work even if list is stale or product wasn't loaded yet
+    if (skuMatches.length === 0 && branchId) {
+      try {
+        const params = new URLSearchParams({
+          branchId: String(branchId),
+          search: query,
+          limit: "50",
+        });
+        const res = await apiFetch<{ data?: POSProduct[] } | POSProduct[]>(
+          `/products?${params.toString()}`
+        );
+        const apiProducts = Array.isArray(res)
+          ? res
+          : Array.isArray(res?.data)
+            ? res.data
+            : [];
+        skuMatches = findExactSkuMatches(apiProducts, exact);
+      } catch {
+        // fall through to error toast
+      }
+    }
 
     if (skuMatches.length === 1) {
       const hit = skuMatches[0];

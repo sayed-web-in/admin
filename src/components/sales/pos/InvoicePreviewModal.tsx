@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle, Download, FileText, Printer } from "lucide-react";
 import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/ui/button";
+import { fetchInvoiceBranding } from "@/lib/invoice-branding";
 import {
   buildInvoicePrintDocumentHtml,
   invoicePayloadToPrintData,
   printInvoiceHtml,
+  type InvoiceBranding,
 } from "@/lib/invoice-print";
 
 interface InvoicePreviewModalProps {
@@ -17,11 +19,24 @@ interface InvoicePreviewModalProps {
 }
 
 export function InvoicePreviewModal({ open, invoiceData, onOpenChange }: InvoicePreviewModalProps) {
+  const [branding, setBranding] = useState<InvoiceBranding | undefined>();
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void fetchInvoiceBranding().then((data) => {
+      if (!cancelled) setBranding(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   const previewHtml = useMemo(() => {
     if (!invoiceData) return "";
     const payload = invoicePayloadToPrintData(invoiceData);
-    return buildInvoicePrintDocumentHtml(payload);
-  }, [invoiceData]);
+    return buildInvoicePrintDocumentHtml(payload, branding);
+  }, [invoiceData, branding]);
 
   if (!open || !invoiceData) return null;
 
@@ -49,7 +64,7 @@ export function InvoicePreviewModal({ open, invoiceData, onOpenChange }: Invoice
             <Download className="mr-1 h-4 w-4" />
             Open for PDF
           </Button>
-          <Button variant="outline" onClick={() => printInvoiceHtml(invoiceData)}>
+          <Button variant="outline" onClick={() => void printInvoiceHtml(invoiceData, branding)}>
             <Printer className="mr-1 h-4 w-4" />
             Print
           </Button>
@@ -62,6 +77,7 @@ export function InvoicePreviewModal({ open, invoiceData, onOpenChange }: Invoice
     >
       <div className="mx-auto h-[72vh] w-full max-w-[860px] rounded-md border border-slate-200 bg-white">
         <iframe
+          key={previewHtml.slice(0, 80)}
           title="Invoice preview"
           className="h-full w-full border-0"
           srcDoc={previewHtml}

@@ -75,7 +75,7 @@ function generateBarcodeHTML(preview: LabelPreview): string {
       html += `<div class="store-name">${escapeHtml(storeName)}</div>`;
     }
 
-    if (settings.showProductName) {
+    if (settings.showProductName && item.productName) {
       html += `<div class="product-name">${escapeHtml(item.productName)}</div>`;
     }
 

@@ -92,7 +92,7 @@ export function usePrintLabel() {
   const [settings, setSettings] = useState<LabelSettings>({
     printMode: "thermal",
     paperSize: "A4",
-    thermalSize: "50x30",
+    thermalSize: "60x40",
     showStoreName: true,
     showBatch: true,
     showProductName: true,
@@ -151,7 +151,12 @@ export function usePrintLabel() {
     []
   );
 
-  const addBatchToItems = useCallback(async (batch: ApiBatch, branchId: string) => {
+  const addBatchToItems = useCallback(
+    async (
+      batch: ApiBatch,
+      branchId: string,
+      meta?: { productName?: string; variantLabel?: string }
+    ) => {
     if (!isUsableEntityId(branchId) || !isUsableEntityId(batch.variantId)) return;
     const sellingPrice = await fetchSellingPrice(
       batch.productId,
@@ -166,8 +171,8 @@ export function usePrintLabel() {
       batchId: batch.id,
       productId: batch.productId,
       variantId: batch.variantId,
-      productName: batch.product?.name || "",
-      variant: batch.variant?.sku || "",
+      productName: meta?.productName || batch.product?.name || "",
+      variant: meta?.variantLabel || batch.variant?.sku || "",
       batchNumber: batch.batchNumber,
       scancode,
       quantity: 1,
@@ -179,7 +184,8 @@ export function usePrintLabel() {
       if (prev.some((item) => item.batchId === batch.id)) return prev;
       return [...prev, newItem];
     });
-  }, []);
+  },
+  []);
 
   const updateSettings = useCallback((partial: Partial<LabelSettings>) => {
     setSettings((prev) => ({ ...prev, ...partial }));
@@ -240,7 +246,7 @@ export function usePrintLabel() {
     setSettings({
       printMode: "thermal",
       paperSize: "A4",
-      thermalSize: "50x30",
+      thermalSize: "60x40",
       showStoreName: true,
       showBatch: true,
       showProductName: true,

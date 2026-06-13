@@ -12,6 +12,12 @@ export interface InvoiceItemPrint {
   attributeValues?: string[];
 }
 
+export interface InvoiceBranding {
+  brandName?: string;
+  /** Absolute URL for print / iframe (use resolveMediaUrl). */
+  logoUrl?: string;
+}
+
 export interface InvoicePrintData {
   invoiceNo: string;
   orderNo: string;
@@ -63,6 +69,29 @@ function buildImeiBlockHtml(imeiNumbers: string[] | undefined): string {
   if (!list.length) return "";
   const valuesHtml = list.map((n) => escapeHtml(n)).join(", ");
   return `<div class="imei-block"><div class="imei-line"><span class="imei-label">IMEI / Serial</span><span class="imei-values">${valuesHtml}</span></div></div>`;
+}
+
+function buildInvoiceTopBranding(branding?: InvoiceBranding): string {
+  const logoUrl = branding?.logoUrl?.trim();
+  const brandName = branding?.brandName?.trim();
+  const logoBlock = logoUrl
+    ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(brandName || "Store logo")}" class="brand-logo" />`
+    : brandName
+      ? `<div class="brand-name-text">${escapeHtml(brandName)}</div>`
+      : "";
+  const nameUnderLogo =
+    logoUrl && brandName
+      ? `<div class="brand-name-under-logo">${escapeHtml(brandName)}</div>`
+      : "";
+
+  return `
+    <div class="invoice-hero">
+      ${logoBlock ? `<div class="logo-wrap">${logoBlock}</div>` : ""}
+      ${nameUnderLogo}
+      <div class="invoice-title">Invoice</div>
+      <div class="invoice-tagline">Sales memo</div>
+    </div>
+  `;
 }
 
 export function invoicePayloadToPrintData(raw: unknown): InvoicePrintData {
@@ -131,7 +160,10 @@ export function invoicePayloadToPrintData(raw: unknown): InvoicePrintData {
   };
 }
 
-export function buildInvoicePrintDocumentHtml(invoice: InvoicePrintData): string {
+export function buildInvoicePrintDocumentHtml(
+  invoice: InvoicePrintData,
+  branding?: InvoiceBranding
+): string {
   const itemsRows = invoice.items
     .map(
       (item) => `<tr>
@@ -142,9 +174,9 @@ export function buildInvoicePrintDocumentHtml(invoice: InvoicePrintData): string
       ${buildImeiBlockHtml(item.imeiNumbers)}
     </div>
   </td>
-  <td class="text-right">${item.quantity}</td>
-  <td class="text-right">${formatCurrencyBasic(item.unitPrice)}</td>
-  <td class="text-right font-semibold">${formatCurrencyBasic(item.total)}</td>
+  <td class="text-right cell-num">${item.quantity}</td>
+  <td class="text-right cell-num">${formatCurrencyBasic(item.unitPrice)}</td>
+  <td class="text-right cell-total">${formatCurrencyBasic(item.total)}</td>
 </tr>`
     )
     .join("");
@@ -205,72 +237,185 @@ export function buildInvoicePrintDocumentHtml(invoice: InvoicePrintData): string
   <title>${escapeHtml(invoice.invoiceNo || "Invoice")}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    @page { size: A4; margin: 13mm; }
+    @page { size: A4; margin: 12mm; }
     * { box-sizing: border-box; }
     body {
       font-family: 'Inter', 'Noto Sans Bengali', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      line-height: 1.45;
       margin: 0;
       padding: 16px;
-      color: #000000;
+      color: #111827;
       background: #ffffff;
     }
     .page { width: 100%; max-width: 210mm; margin: 0 auto; padding: 0; background: #ffffff; }
-    .header {
-      display: flex; justify-content: space-between; align-items: flex-start; gap: 24px;
-      padding: 10px 0 6px 0; margin-bottom: 10px; border-bottom: 1px solid #000000;
+    .invoice-hero {
+      text-align: center;
+      padding: 8px 0 14px;
+      margin-bottom: 12px;
+      border-bottom: 2px solid #111827;
     }
-    .brand-title { font-size: 18px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; margin: 0 0 4px 0; }
-    .brand-sub { font-size: 11px; }
-    .meta { font-size: 11px; line-height: 1.4; text-align: right; }
-    .meta-label { color: #444444; }
-    .meta-value { font-weight: 600; }
-    .two-col { display: flex; gap: 24px; margin-top: 16px; margin-bottom: 16px; }
-    .two-col > div { flex: 1; font-size: 12px; }
-    .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: #444444; margin-bottom: 6px; }
-    .barcode-block { text-align: center; margin: 10px 0 0 0; }
+    .logo-wrap {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 8px;
+      min-height: 44px;
+    }
+    .brand-logo {
+      max-height: 56px;
+      max-width: 220px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      display: block;
+    }
+    .brand-name-text {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: #111827;
+      text-transform: uppercase;
+    }
+    .brand-name-under-logo {
+      font-size: 12px;
+      font-weight: 600;
+      color: #4b5563;
+      margin-bottom: 6px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .invoice-title {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: #111827;
+      margin: 2px 0 4px;
+    }
+    .invoice-tagline {
+      font-size: 12px;
+      font-weight: 500;
+      color: #6b7280;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .meta-strip {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 20px;
+      flex-wrap: wrap;
+      padding: 10px 0 12px;
+      margin-bottom: 4px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .meta-strip-left,
+    .meta-strip-right {
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .meta-strip-right { text-align: right; margin-left: auto; }
+    .meta-label { color: #6b7280; font-weight: 600; }
+    .meta-value { font-weight: 700; color: #111827; }
+    .branch-pill {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: #f3f4f6;
+      font-size: 11px;
+      font-weight: 600;
+      color: #374151;
+    }
+    .two-col { display: flex; gap: 24px; margin-top: 14px; margin-bottom: 14px; }
+    .two-col > div { flex: 1; font-size: 13px; }
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #6b7280;
+      margin-bottom: 6px;
+    }
+    .barcode-block { text-align: center; margin: 12px 0 14px; }
     .barcode-number {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
-      font-size: 11px; letter-spacing: 0.22em; color: #000000;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      color: #111827;
+      margin-top: 4px;
     }
-    table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 4px; }
-    th, td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; }
-    th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: #6b7280; border-bottom-width: 2px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6b7280;
+      border-bottom: 2px solid #d1d5db;
+      background: #f9fafb;
+    }
     .text-right { text-align: right; }
+    .cell-num { font-weight: 600; color: #374151; }
+    .cell-total { font-weight: 700; color: #111827; }
     .item-name-wrap { margin-bottom: 2px; }
     .item-name-bold { font-weight: 700; }
-    .attr-values { font-size: 9px; color: #6b7280; font-weight: normal; }
+    .attr-values { font-size: 10px; color: #6b7280; font-weight: 500; }
     .sku { font-size: 10px; color: #6b7280; margin-top: 2px; }
     .imei-block { margin-top: 6px; max-width: 100%; }
     .imei-line { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 6px 10px; width: 100%; }
-    .imei-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; flex-shrink: 0; }
-    .imei-values { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 9px; line-height: 1.45; color: #111827; text-align: left; word-break: break-all; min-width: 0; }
-    .summary { width: 260px; margin-left: auto; font-size: 11px; margin-top: 8px; }
-    .row-line { display: flex; justify-content: space-between; margin-bottom: 3px; }
-    .row-line.total span:last-child { font-size: 13px; font-weight: 700; color: #111827; }
-    .neg { color: #dc2626; }
-    .due { color: #b45309; }
-    .footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #6b7280; text-align: center; }
+    .imei-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; flex-shrink: 0; }
+    .imei-values { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; line-height: 1.45; color: #111827; text-align: left; word-break: break-all; min-width: 0; }
+    .summary {
+      width: 280px;
+      margin-left: auto;
+      font-size: 12px;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fafafa;
+    }
+    .row-line { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+    .row-line > span:first-child { font-weight: 600; color: #4b5563; }
+    .row-line > span:last-child { font-weight: 700; color: #111827; }
+    .row-line.total span:first-child { font-weight: 700; color: #111827; }
+    .row-line.total span:last-child { font-size: 15px; font-weight: 800; color: #111827; }
+    .neg { color: #dc2626 !important; }
+    .due { color: #b45309 !important; }
+    .footer {
+      margin-top: 28px;
+      padding-top: 10px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 11px;
+      font-weight: 500;
+      color: #6b7280;
+      text-align: center;
+    }
     @media print {
       body { margin: 0; padding: 0; background: #ffffff; }
       .page { margin: 0; padding: 0; width: auto; max-width: none; }
       .two-col { flex-direction: row; }
-      .meta { text-align: right; }
-      .summary { width: 260px; max-width: none; margin-left: auto; margin-right: 0; }
+      .meta-strip-right { text-align: right; }
+      .summary { width: 280px; max-width: none; margin-left: auto; margin-right: 0; }
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 </head>
 <body>
   <div class="page">
-    <div class="header">
-      <div class="brand">
-        <div class="brand-title">INVOICE</div>
-        <div class="brand-sub">Sales memo</div>
-        ${invoice.branchName ? `<div class="brand-sub">Branch: ${escapeHtml(invoice.branchName)}</div>` : ""}
+    ${buildInvoiceTopBranding(branding)}
+    <div class="meta-strip">
+      <div class="meta-strip-left">
+        ${invoice.branchName ? `<div class="branch-pill">Branch: ${escapeHtml(invoice.branchName)}</div>` : ""}
       </div>
-      <div class="meta">
+      <div class="meta-strip-right">
         <div><span class="meta-label">Invoice No:</span> <span class="meta-value">${escapeHtml(invoice.invoiceNo)}</span></div>
         <div><span class="meta-label">Order No:</span> <span class="meta-value">${escapeHtml(invoice.orderNo)}</span></div>
         <div><span class="meta-label">Date:</span> <span class="meta-value">${escapeHtml(formatDateTimeMedShort(invoice.date))}</span></div>
@@ -280,13 +425,13 @@ export function buildInvoicePrintDocumentHtml(invoice: InvoicePrintData): string
       <div>
         <div class="section-title">Bill To</div>
         <div><strong>${escapeHtml(invoice.customerName || "Walk-in Customer")}</strong></div>
-        ${invoice.customerPhone ? `<div style="font-size:11px;color:#666">Phone: ${escapeHtml(invoice.customerPhone)}</div>` : ""}
-        ${invoice.customerAddress ? `<div style="font-size:11px;color:#666">${escapeHtml(invoice.customerAddress)}</div>` : ""}
+        ${invoice.customerPhone ? `<div style="font-size:12px;color:#6b7280;margin-top:2px">Phone: ${escapeHtml(invoice.customerPhone)}</div>` : ""}
+        ${invoice.customerAddress ? `<div style="font-size:12px;color:#6b7280;margin-top:2px">${escapeHtml(invoice.customerAddress)}</div>` : ""}
       </div>
       <div style="text-align:right">
         <div class="section-title">Payment Details</div>
-        ${invoice.paymentMethod ? `<div style="font-size:11px"><span style="color:#666">Method:</span> <strong>${escapeHtml(invoice.paymentMethod)}</strong></div>` : ""}
-        <div style="font-size:11px"><span style="color:#666">Status:</span> <strong>${escapeHtml(invoice.paymentStatus)}</strong></div>
+        ${invoice.paymentMethod ? `<div style="font-size:12px"><span class="meta-label">Method:</span> <strong>${escapeHtml(invoice.paymentMethod)}</strong></div>` : ""}
+        <div style="font-size:12px"><span class="meta-label">Status:</span> <strong>${escapeHtml(invoice.paymentStatus)}</strong></div>
       </div>
     </div>
     <div class="barcode-block">
@@ -321,7 +466,8 @@ export function buildInvoicePrintDocumentHtml(invoice: InvoicePrintData): string
               format: 'CODE128',
               displayValue: false,
               margin: 0,
-              height: 60
+              height: 52,
+              width: 1.2
             });
           }
         }
@@ -332,9 +478,17 @@ export function buildInvoicePrintDocumentHtml(invoice: InvoicePrintData): string
 </html>`;
 }
 
-export function printInvoiceHtml(invoice: unknown) {
+export async function printInvoiceHtml(
+  invoice: unknown,
+  branding?: InvoiceBranding
+) {
   const data = invoicePayloadToPrintData(invoice);
-  const html = buildInvoicePrintDocumentHtml(data);
+  let resolvedBranding = branding;
+  if (!resolvedBranding && typeof window !== "undefined") {
+    const { fetchInvoiceBranding } = await import("@/lib/invoice-branding");
+    resolvedBranding = await fetchInvoiceBranding();
+  }
+  const html = buildInvoicePrintDocumentHtml(data, resolvedBranding);
   const iframe = document.createElement("iframe");
   iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
   document.body.appendChild(iframe);
@@ -350,5 +504,5 @@ export function printInvoiceHtml(invoice: unknown) {
       if (document.body.contains(iframe)) document.body.removeChild(iframe);
     }, 800);
   };
-  iframe.onload = () => setTimeout(trigger, 250);
+  iframe.onload = () => setTimeout(trigger, 300);
 }
